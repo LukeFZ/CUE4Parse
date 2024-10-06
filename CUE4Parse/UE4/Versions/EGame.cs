@@ -48,6 +48,7 @@ namespace CUE4Parse.UE4.Versions
         GAME_UE4_23 = GameUtils.GameUe4Base + 23 << 4,
             GAME_ApexLegendsMobile = GAME_UE4_23 + 1,
         GAME_UE4_24 = GameUtils.GameUe4Base + 24 << 4,
+            GAME_TonyHawkProSkater12 = GAME_UE4_24 + 1,
         GAME_UE4_25 = GameUtils.GameUe4Base + 25 << 4,
             GAME_UE4_25_Plus = GAME_UE4_25 + 1,
             GAME_RogueCompany = GAME_UE4_25 + 2,
@@ -80,8 +81,10 @@ namespace CUE4Parse.UE4.Versions
             GAME_Valorant = GAME_UE4_27 + 5,
             GAME_Gollum = GAME_UE4_27 + 6,
             GAME_Grounded = GAME_UE4_27 + 7,
-            GAME_SeekersofSkyveil = GAME_UE4_27 + 8,
+            GAME_DeltaForceHawkOps = GAME_UE4_27 + 8,
             GAME_MortalKombat1 = GAME_UE4_27 + 9,
+            GAME_VisionsofMana = GAME_UE4_27 + 10,
+            GAME_Spectre = GAME_UE4_27 + 11,
         GAME_UE4_28 = GameUtils.GameUe4Base + 28 << 4,
 
         GAME_UE4_LATEST = GAME_UE4_28,
@@ -91,19 +94,27 @@ namespace CUE4Parse.UE4.Versions
         // changed the IoStore and its packages format which breaks backward compatibility with 5.0.0-16433597+++UE5+Release-5.0-EarlyAccess
         GAME_UE5_0 = GameUtils.GameUe5Base + 0 << 4,
             GAME_MeetYourMaker = GAME_UE5_0 + 1,
+            GAME_BlackMythWukong = GAME_UE5_0 + 2,
         GAME_UE5_1 = GameUtils.GameUe5Base + 1 << 4,
             GAME_3on3FreeStyleRebound = GAME_UE5_1 + 1,
+            GAME_InfinityNikki = GAME_UE5_1 + 2,
+            GAME_TheCastingofFrankStone = GAME_UE5_1 + 3,
         GAME_UE5_2 = GameUtils.GameUe5Base + 2 << 4,
             GAME_DeadByDaylight = GAME_UE5_2 + 1,
             GAME_PaxDei = GAME_UE5_2 + 2,
-            GAME_TheFirstDescendent = GAME_UE5_2 + 3,
+            GAME_TheFirstDescendant = GAME_UE5_2 + 3,
         GAME_UE5_3 = GameUtils.GameUe5Base + 3 << 4,
             GAME_MarvelRivals = GAME_UE5_3 + 1,
             GAME_WildAssault = GAME_UE5_3 + 2,
+            GAME_NobodyWantsToDie = GAME_UE5_3 + 3,
+            GAME_MonsterJamShowdown = GAME_UE5_3 + 4,
+            GAME_Rennsport = GAME_UE5_3 + 5,
         GAME_UE5_4 = GameUtils.GameUe5Base + 4 << 4,
+            GAME_FunkoFusion = GAME_UE5_4 + 1,
         GAME_UE5_5 = GameUtils.GameUe5Base + 5 << 4,
+        GAME_UE5_6 = GameUtils.GameUe5Base + 6 << 4,
 
-        GAME_UE5_LATEST = GAME_UE5_5
+        GAME_UE5_LATEST = GAME_UE5_6
     }
 
     public static class GameUtils
@@ -130,9 +141,9 @@ namespace CUE4Parse.UE4.Versions
                 {
                     < EGame.GAME_UE5_1 => new FPackageFileVersion(522, 1004),
                     < EGame.GAME_UE5_2 => new FPackageFileVersion(522, 1008),
-                        EGame.GAME_TheFirstDescendent => new FPackageFileVersion(522, 1002),
+                        EGame.GAME_TheFirstDescendant => new FPackageFileVersion(522, 1002),
                     < EGame.GAME_UE5_4 => new FPackageFileVersion(522, 1009),
-                    < EGame.GAME_UE5_5 => new FPackageFileVersion(522, 1011),
+                    < EGame.GAME_UE5_5 => new FPackageFileVersion(522, 1012),
                     _ => new FPackageFileVersion((int) EUnrealEngineObjectUE4Version.AUTOMATIC_VERSION, (int) EUnrealEngineObjectUE5Version.AUTOMATIC_VERSION)
                 };
             }

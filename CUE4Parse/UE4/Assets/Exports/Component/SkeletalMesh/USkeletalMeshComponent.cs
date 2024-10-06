@@ -1,16 +1,15 @@
-using CUE4Parse.UE4.Assets.Exports.Component.StaticMesh;
-using CUE4Parse.UE4.Assets.Exports.SkeletalMesh;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.UObject;
 
 namespace CUE4Parse.UE4.Assets.Exports.Component.SkeletalMesh;
 
-public class USkeletalMeshComponent : UObject
+public class USkeletalMeshComponentBudgeted : USkeletalMeshComponent;
+
+public class USkeletalMeshComponent : USceneComponent
 {
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
-        
     }
 
     public FPackageIndex GetSkeletalMesh()
@@ -27,6 +26,7 @@ public class USkeletalMeshComponent : UObject
         var current = this;
         while (true)
         {
+            if (current is null) break;
             mesh = current.GetOrDefault(parameterName, new FPackageIndex());
             if (!mesh.IsNull || current.Template == null)
                 break;

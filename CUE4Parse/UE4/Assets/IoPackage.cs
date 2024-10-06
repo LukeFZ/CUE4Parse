@@ -108,7 +108,7 @@ namespace CUE4Parse.UE4.Assets
                 }
 
                 BulkDataMap = [];
-                if (uassetAr.Ver >= EUnrealEngineObjectUE5Version.DATA_RESOURCES || uassetAr.Game == EGame.GAME_TheFirstDescendent)
+                if (uassetAr.Ver >= EUnrealEngineObjectUE5Version.DATA_RESOURCES || uassetAr.Game == EGame.GAME_TheFirstDescendant)
                 {
                     if (uassetAr.Game >= EGame.GAME_UE5_4)
                     {
@@ -220,7 +220,7 @@ namespace CUE4Parse.UE4.Assets
                 ExportsLazy[entry.LocalExportIndex] = new Lazy<UObject>(() =>
                 {
                     // Create
-                    var obj = ConstructObject(ResolveObjectIndex(export.ClassIndex)?.Object?.Value as UStruct);
+                    var obj = ConstructObject(ResolveObjectIndex(export.ClassIndex)?.Object?.Value as UStruct, this, export.ObjectFlags);
                     obj.Name = CreateFNameFromMappedName(export.ObjectName).Text;
                     obj.Outer = (ResolveObjectIndex(export.OuterIndex) as ResolvedExportObject)?.ExportObject.Value ?? this;
                     obj.Super = ResolveObjectIndex(export.SuperIndex) as ResolvedExportObject;

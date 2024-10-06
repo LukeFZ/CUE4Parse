@@ -134,6 +134,7 @@ namespace CUE4Parse.UE4.Pak.Objects
 
             IsSubVersion = Version == EPakFileVersion.PakFile_Version_FNameBasedCompressionMethod && offsetToTry == OffsetsToTry.Size8a;
             if (Ar.Game == EGame.GAME_TorchlightInfinite) Ar.Position += 1;
+            if (Ar.Game == EGame.GAME_BlackMythWukong) Ar.Position += 2;
             IndexOffset = Ar.Read<long>();
             if (Ar.Game == EGame.GAME_Farlight84) Ar.Position += 8; // unknown long
             if (Ar.Game == EGame.GAME_Snowbreak) IndexOffset ^= 0x1C1D1E1F;
@@ -153,8 +154,8 @@ namespace CUE4Parse.UE4.Pak.Objects
             if (Ar.Game == EGame.GAME_WildAssault)
             {
                 EncryptionKeyGuid = default;
-                IndexOffset ^= 0x345457bec96524a9;
-                IndexSize = (long) ((ulong) IndexSize ^ 0xB54CA4A45C698156);
+                IndexOffset = (long) ((ulong) IndexOffset ^ 0xE36CC9FA0F542EC9) - 69;
+                IndexSize = (long) ((ulong) IndexSize ^ 0xDAE3F23058AA20D2) - 5;
             }
 
             if (Ar.Game == EGame.GAME_DeadByDaylight)
@@ -182,6 +183,7 @@ namespace CUE4Parse.UE4.Pak.Objects
                     OffsetsToTry.Size8a => 5,
                     OffsetsToTry.SizeHotta => 5,
                     OffsetsToTry.SizeDbD => 5,
+                    OffsetsToTry.SizeRennsport => 5,
                     OffsetsToTry.Size8 => 4,
                     OffsetsToTry.Size8_1 => 1,
                     OffsetsToTry.Size8_2 => 2,
@@ -240,12 +242,14 @@ namespace CUE4Parse.UE4.Pak.Objects
             Size8 = Size8_3 + 32, // added size of CompressionMethods as char[32]
             Size8a = Size8 + 32, // UE4.23 - also has version 8 (like 4.22) but different pak file structure
             Size9 = Size8a + 1, // UE4.25
+            SizeB1 = Size9 + 1, // UE4.25
             //Size10 = Size8a
 
             SizeFTT = Size + 4, // additional int for extra magic
             SizeHotta = Size8a + 4, // additional int for custom pak version
             SizeFarlight = Size8a + 9, // additional long and byte
             SizeDreamStar = Size8a + 10,
+            SizeRennsport = Size8a + 16,
             SizeQQ = Size8a + 26,
             SizeDbD = Size8a + 32, // additional 28 bytes for encryption key and 4 bytes for unknown uint
 
@@ -289,6 +293,8 @@ namespace CUE4Parse.UE4.Pak.Objects
                     EGame.GAME_Farlight84 => [OffsetsToTry.SizeFarlight],
                     EGame.GAME_QQ or EGame.GAME_DreamStar => [OffsetsToTry.SizeDreamStar, OffsetsToTry.SizeQQ],
                     EGame.GAME_GameForPeace => [OffsetsToTry.SizeGameForPeace],
+                    EGame.GAME_BlackMythWukong => [OffsetsToTry.SizeB1],
+                    EGame.GAME_Rennsport => [OffsetsToTry.SizeRennsport],
                     _ => _offsetsToTry
                 };
                 foreach (var offset in offsetsToTry)

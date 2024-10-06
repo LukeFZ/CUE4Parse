@@ -4,8 +4,10 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+
 using CUE4Parse.Encryption.Aes;
 using CUE4Parse.FileProvider.Objects;
+using CUE4Parse.GameTypes.Rennsport.Encryption.Aes;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Pak.Objects;
@@ -13,7 +15,11 @@ using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.UE4.VirtualFileSystem;
 using CUE4Parse.Utils;
+
+using OffiUtils;
+
 using Serilog;
+
 using static CUE4Parse.Compression.Compression;
 using static CUE4Parse.UE4.Pak.Objects.EPakFileVersion;
 
@@ -52,6 +58,8 @@ namespace CUE4Parse.UE4.Pak
             : this(file.FullName, file.Open(FileMode.Open, FileAccess.Read, FileShare.ReadWrite), versions) {}
         public PakFileReader(string filePath, Stream stream, VersionContainer? versions = null)
             : this(new FStreamArchive(filePath, stream, versions)) {}
+        public PakFileReader(string filePath, IRandomAccessStream stream, VersionContainer? versions = null)
+            : this(new FRandomAccessStreamArchive(filePath, stream, versions)) {}
 
         public override byte[] Extract(VfsEntry entry)
         {
@@ -63,18 +71,24 @@ namespace CUE4Parse.UE4.Pak
 #if DEBUG
                 Log.Debug("{EntryName} is compressed with {CompressionMethod}", pakEntry.Name, pakEntry.CompressionMethod);
 #endif
-                if (Game is EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse) return NetEaseExtract(reader, pakEntry);
-                if (Game is EGame.GAME_GameForPeace) return GameForPeaceExtract(reader, pakEntry);
+                switch (Game)
+                {
+                    case EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse:
+                        return NetEaseCompressedExtract(reader, pakEntry);
+                    case EGame.GAME_GameForPeace:
+                        return GameForPeaceExtract(reader, pakEntry);
+                    case EGame.GAME_Rennsport:
+                        return RennsportCompressedExtract(reader, pakEntry);
+                }
 
                 var uncompressed = new byte[(int) pakEntry.UncompressedSize];
                 var uncompressedOff = 0;
                 foreach (var block in pakEntry.CompressionBlocks)
                 {
-                    reader.Position = block.CompressedStart;
                     var blockSize = (int) block.Size;
                     var srcSize = blockSize.Align(pakEntry.IsEncrypted ? Aes.ALIGN : 1);
                     // Read the compressed block
-                    var compressed = ReadAndDecrypt(srcSize, reader, pakEntry.IsEncrypted);
+                    var compressed = ReadAndDecryptAt(block.CompressedStart, srcSize, reader, pakEntry.IsEncrypted);
                     // Calculate the uncompressed size,
                     // its either just the compression block size,
                     // or if it's the last block, it's the remaining data size
@@ -86,12 +100,20 @@ namespace CUE4Parse.UE4.Pak
                 return uncompressed;
             }
 
+            switch (Game)
+            {
+                case EGame.GAME_MarvelRivals or EGame.GAME_OperationApocalypse:
+                    return NetEaseExtract(reader, pakEntry);
+                case EGame.GAME_Rennsport:
+                    return RennsportExtract(reader, pakEntry);
+            }
+
             // Pak Entry is written before the file data,
             // but it's the same as the one from the index, just without a name
             // We don't need to serialize that again so + file.StructSize
-            reader.Position = pakEntry.Offset + pakEntry.StructSize; // Doesn't seem to be the case with older pak versions
             var size = (int) pakEntry.UncompressedSize.Align(pakEntry.IsEncrypted ? Aes.ALIGN : 1);
-            var data = ReadAndDecrypt(size, reader, pakEntry.IsEncrypted);
+            var data = ReadAndDecryptAt(pakEntry.Offset + pakEntry.StructSize /* Doesn't seem to be the case with older pak versions */,
+                size, reader, pakEntry.IsEncrypted);
             return size != pakEntry.UncompressedSize ? data.SubByteArray((int) pakEntry.UncompressedSize) : data;
         }
 
@@ -180,7 +202,7 @@ namespace CUE4Parse.UE4.Pak
             int fileCount = 0;
             EncryptedFileCount = 0;
 
-            if (Ar.Game == EGame.GAME_DreamStar)
+            if (Ar.Game is EGame.GAME_DreamStar or EGame.GAME_DeltaForceHawkOps)
             {
                 primaryIndex.Position += 8; // PathHashSeed
                 fileCount = primaryIndex.Read<int>();
@@ -199,7 +221,7 @@ namespace CUE4Parse.UE4.Pak
             ValidateMountPoint(ref mountPoint);
             MountPoint = mountPoint;
 
-            if (Ar.Game != EGame.GAME_DreamStar)
+            if (!(Ar.Game is EGame.GAME_DreamStar or EGame.GAME_DeltaForceHawkOps))
             {
                 fileCount = primaryIndex.Read<int>();
                 primaryIndex.Position += 8; // PathHashSeed
@@ -209,6 +231,7 @@ namespace CUE4Parse.UE4.Pak
                 throw new ParserException(primaryIndex, "No path hash index");
 
             primaryIndex.Position += 36; // PathHashIndexOffset (long) + PathHashIndexSize (long) + PathHashIndexHash (20 bytes)
+            if (Ar.Game == EGame.GAME_Rennsport) primaryIndex.Position += 16;
 
             if (!primaryIndex.ReadBoolean())
                 throw new ParserException(primaryIndex, "No directory index");
@@ -218,7 +241,13 @@ namespace CUE4Parse.UE4.Pak
             var directoryIndexOffset = primaryIndex.Read<long>();
             var directoryIndexSize = primaryIndex.Read<long>();
             primaryIndex.Position += 20; // Directory Index hash
+            if (Ar.Game == EGame.GAME_Rennsport) primaryIndex.Position += 20;
             var encodedPakEntriesSize = primaryIndex.Read<int>();
+            if (Ar.Game == EGame.GAME_Rennsport)
+            {
+                primaryIndex.Position -= 4;
+                encodedPakEntriesSize = (int) (primaryIndex.Length - primaryIndex.Position - 6);
+            }
             var encodedPakEntries = primaryIndex.ReadBytes(encodedPakEntriesSize);
 
             if (primaryIndex.Read<int>() < 0)
@@ -227,6 +256,13 @@ namespace CUE4Parse.UE4.Pak
             // Read FDirectoryIndex
             Ar.Position = directoryIndexOffset;
             var directoryIndex = new FByteArchive($"{Name} - Directory Index", ReadAndDecrypt((int) directoryIndexSize));
+            if (Ar.Game == EGame.GAME_Rennsport)
+            {
+                Ar.Position = directoryIndexOffset;
+                directoryIndex = new FByteArchive($"{Name} - Directory Index",
+                    RennsportAes.RennsportDecrypt(Ar.ReadBytes((int) directoryIndexSize), 0,
+                        (int) directoryIndexSize, true, this, true));
+            }
             var directoryIndexLength = directoryIndex.Read<int>();
             var files = new Dictionary<string, GameFile>(fileCount);
 
@@ -323,7 +359,8 @@ namespace CUE4Parse.UE4.Pak
         {
             var reader = IsConcurrent ? (FArchive) Ar.Clone() : Ar;
             reader.Position = Info.IndexOffset;
-            return reader.ReadBytes((4 + MAX_MOUNTPOINT_TEST_LENGTH * 2).Align(Aes.ALIGN));
+            var size = Math.Min((int) Info.IndexSize, 4 + MAX_MOUNTPOINT_TEST_LENGTH * 2);
+            return reader.ReadBytes(size.Align(Aes.ALIGN));
         }
 
         public override void Dispose()

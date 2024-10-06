@@ -134,6 +134,7 @@ namespace CUE4Parse.UE4.Objects.UObject
             }
 
             legacyFileVersion = Ar.Read<int>();
+            if (Ar.Game == EGame.GAME_DeltaForceHawkOps) legacyFileVersion /= 659;
 
             if (legacyFileVersion < 0) // means we have modern version numbers
             {
@@ -159,7 +160,7 @@ namespace CUE4Parse.UE4.Objects.UObject
                 }
 
                 FileVersionLicenseeUE = Ar.Read<EUnrealEngineObjectLicenseeUEVersion>();
-                CustomVersionContainer = legacyFileVersion <= -2 ? new FCustomVersionContainer(Ar) : new FCustomVersionContainer();
+                CustomVersionContainer = new FCustomVersionContainer(Ar, FCustomVersionContainer.DetermineSerializationFormat(legacyFileVersion));
 
                 if (Ar.Versions.CustomVersions == null && CustomVersionContainer.Versions.Length > 0)
                 {
@@ -190,7 +191,7 @@ namespace CUE4Parse.UE4.Objects.UObject
             }
 
             TotalHeaderSize = Ar.Read<int>();
-            FolderName = Ar.ReadFString();
+            FolderName = Ar.ReadFString(); // PackageGroup
             PackageFlags = Ar.Read<EPackageFlags>();
 
             /*if (PackageFlags.HasFlag(EPackageFlags.PKG_FilterEditorOnly))
@@ -272,6 +273,8 @@ namespace CUE4Parse.UE4.Objects.UObject
             }
 
             Generations = Ar.ReadArray<FGenerationInfo>();
+
+            if (Ar.Game == EGame.GAME_DeltaForceHawkOps) Ar.Position += 16;
 
             if (FileVersionUE >= EUnrealEngineObjectUE4Version.ENGINE_VERSION_OBJECT)
             {
@@ -400,7 +403,7 @@ namespace CUE4Parse.UE4.Objects.UObject
 
             NamesReferencedFromExportDataCount = FileVersionUE >= EUnrealEngineObjectUE5Version.NAMES_REFERENCED_FROM_EXPORT_DATA ? Ar.Read<int>() : NameCount;
             PayloadTocOffset = FileVersionUE >= EUnrealEngineObjectUE5Version.PAYLOAD_TOC ? Ar.Read<long>() : -1;
-            DataResourceOffset = FileVersionUE >= EUnrealEngineObjectUE5Version.DATA_RESOURCES || Ar.Game == EGame.GAME_TheFirstDescendent ? Ar.Read<int>() : -1;
+            DataResourceOffset = FileVersionUE >= EUnrealEngineObjectUE5Version.DATA_RESOURCES || Ar.Game == EGame.GAME_TheFirstDescendant ? Ar.Read<int>() : -1;
 
             if (Tag == PACKAGE_FILE_TAG_ONE && Ar is FAssetArchive assetAr)
             {

@@ -274,7 +274,7 @@ public class FStructFallbackConverter : JsonConverter<FStructFallback>
 
         foreach (var property in value.Properties)
         {
-            writer.WritePropertyName(property.Name.Text);
+            writer.WritePropertyName(property.ArrayIndex > 0 ? $"{property.Name.Text}[{property.ArrayIndex}]" : property.Name.Text);
             serializer.Serialize(writer, property.Tag);
         }
 
@@ -694,6 +694,20 @@ public class StrPropertyConverter : JsonConverter<StrProperty>
     }
 }
 
+public class VerseStringPropertyConverter : JsonConverter<VerseStringProperty>
+{
+    public override void WriteJson(JsonWriter writer, VerseStringProperty value, JsonSerializer serializer)
+    {
+        writer.WriteValue(value.Value);
+    }
+
+    public override VerseStringProperty ReadJson(JsonReader reader, Type objectType, VerseStringProperty existingValue, bool hasExistingValue,
+        JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
 public class StructPropertyConverter : JsonConverter<StructProperty>
 {
     public override void WriteJson(JsonWriter writer, StructProperty value, JsonSerializer serializer)
@@ -917,14 +931,14 @@ public class FPropertyTagTypeConverter : JsonConverter<FPropertyTagType>
     }
 }
 
-public class UScriptStructConverter : JsonConverter<UScriptStruct>
+public class FScriptStructConverter : JsonConverter<FScriptStruct>
 {
-    public override void WriteJson(JsonWriter writer, UScriptStruct value, JsonSerializer serializer)
+    public override void WriteJson(JsonWriter writer, FScriptStruct value, JsonSerializer serializer)
     {
         serializer.Serialize(writer, value.StructType);
     }
 
-    public override UScriptStruct ReadJson(JsonReader reader, Type objectType, UScriptStruct existingValue, bool hasExistingValue,
+    public override FScriptStruct ReadJson(JsonReader reader, Type objectType, FScriptStruct existingValue, bool hasExistingValue,
         JsonSerializer serializer)
     {
         throw new NotImplementedException();
@@ -1148,7 +1162,15 @@ public class FWorldConditionQueryDefinitionConverter : JsonConverter<FWorldCondi
 {
     public override void WriteJson(JsonWriter writer, FWorldConditionQueryDefinition value, JsonSerializer serializer)
     {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName("StaticStruct");
         serializer.Serialize(writer, value.StaticStruct);
+
+        writer.WritePropertyName("SharedDefinition");
+        serializer.Serialize(writer, value.SharedDefinition);
+
+        writer.WriteEndObject();
     }
 
     public override FWorldConditionQueryDefinition ReadJson(JsonReader reader, Type objectType, FWorldConditionQueryDefinition existingValue, bool hasExistingValue,
