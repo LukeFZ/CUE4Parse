@@ -1,5 +1,6 @@
 using System;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.Core.Misc;
 using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
@@ -23,11 +24,12 @@ public class UStaticMesh : UObject
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
+        if(Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 12;
         base.Deserialize(Ar, validPos);
         Materials = [];
         LODForCollision = GetOrDefault(nameof(LODForCollision), 0);
 
-        var stripDataFlags = Ar.Read<FStripDataFlags>();
+        var stripDataFlags = new FStripDataFlags(Ar);
         bCooked = Ar.ReadBoolean();
         BodySetup = new FPackageIndex(Ar);
 
@@ -36,21 +38,26 @@ public class UStaticMesh : UObject
 
         if (!stripDataFlags.IsEditorDataStripped())
         {
-            Log.Warning("Static Mesh with Editor Data not implemented yet");
-            Ar.Position = validPos;
-            return;
-            // if (Ar.Ver < EUnrealEngineObjectUE4Version.DEPRECATED_STATIC_MESH_THUMBNAIL_PROPERTIES_REMOVED)
-            // {
-            //     var dummyThumbnailAngle = new FRotator(Ar);
-            //     var dummyThumbnailDistance = Ar.Read<float>();
-            // }
-            //
-            // var highResSourceMeshName = Ar.ReadFString();
-            // var highResSourceMeshCRC = Ar.Read<uint>();
+            if (Ar.Ver < EUnrealEngineObjectUE4Version.DEPRECATED_STATIC_MESH_THUMBNAIL_PROPERTIES_REMOVED)
+            {
+                 var dummyThumbnailAngle = new FRotator(Ar);
+                 var dummyThumbnailDistance = Ar.Read<float>();
+            }
+
+            if (FRenderingObjectVersion.Get(Ar) < FRenderingObjectVersion.Type.DeprecatedHighResSourceMesh)
+            {
+                var Deprecated_HighResSourceMeshName = Ar.ReadFString();
+                var Deprecated_HighResSourceMeshCRC = Ar.Read<uint>();
+            }
         }
 
         LightingGuid = Ar.Read<FGuid>(); // LocalLightingGuid
         Sockets = Ar.ReadArray(() => new FPackageIndex(Ar));
+
+        if (!Ar.IsFilterEditorOnly)
+        {
+            return; // so it doesn't throw
+        }
 
         // https://github.com/EpicGames/UnrealEngine/blob/ue5-main/Engine/Source/Runtime/Engine/Private/StaticMesh.cpp#L6701
         if (bCooked)
@@ -58,6 +65,7 @@ public class UStaticMesh : UObject
             RenderData = Ar.Game switch
             {
                 EGame.GAME_GameForPeace => new GFPStaticMeshRenderData(Ar, GetOrDefault<bool>("bIsStreamable")),
+                EGame.GAME_WeHappyFew => new GFPStaticMeshRenderData(Ar, true),
                 _ => RenderData = new FStaticMeshRenderData(Ar)
             };
         }
@@ -67,35 +75,39 @@ public class UStaticMesh : UObject
             Ar.Position += 64; // 8 per-platform floats
         }
 
+        if (Ar.Game is EGame.GAME_RocoKingdomWorld) Ar.Position += 4;
+
         if (bCooked && Ar.Game is >= EGame.GAME_UE4_20 and < EGame.GAME_UE5_0 && Ar.Game != EGame.GAME_DreamStar) // DS removed this for some reason
         {
             var bHasOccluderData = Ar.ReadBoolean();
             if (bHasOccluderData)
             {
-                if ((Ar.Game is EGame.GAME_FragPunk && Ar.ReadBoolean()) || Ar.Game is EGame.GAME_CrystalOfAtlan or EGame.GAME_Farlight84)
+                switch (Ar.Game)
                 {
-                    Ar.SkipBulkArrayData();
-                    Ar.SkipBulkArrayData();
-                    if (Ar.Game is EGame.GAME_CrystalOfAtlan) Ar.SkipBulkArrayData();
-                    if (Ar.Game is EGame.GAME_Farlight84)
+                    case EGame.GAME_CrystalOfAtlan:
+                    case EGame.GAME_FragPunk:
+                    case EGame.GAME_RocoKingdomWorld:
+                        if (Ar.Game is EGame.GAME_FragPunk && !Ar.ReadBoolean()) break;
+                        Ar.SkipMultipleBulkArrayData(3);
+                        break;
+                    case EGame.GAME_Farlight84:
                     {
+                        Ar.SkipMultipleBulkArrayData(2);
                         var count = Ar.Read<int>();
                         for (var i = 0; i < count; i++)
-                        {
-                            Ar.SkipBulkArrayData();
-                            Ar.SkipBulkArrayData();
-                        }
+                            Ar.SkipMultipleBulkArrayData(2);
+                        break;
                     }
-                }
-                else
-                {
-                    Ar.SkipFixedArray(12); // Vertices
-                    Ar.SkipFixedArray(2); // Indices
+                    default:
+                        Ar.SkipFixedArray(12); // Vertices
+                        Ar.SkipFixedArray(2); // Indices
+                        break;
                 }
             }
         }
 
-        if (Ar.Game is EGame.GAME_FateTrigger or EGame.GAME_GhostsofTabor) Ar.Position += 4;
+        if (Ar.Game is EGame.GAME_FateTrigger or EGame.GAME_GhostsofTabor or EGame.GAME_Aion2) Ar.Position += 4;
+        if (Ar.Game is EGame.GAME_TheFinals or EGame.GAME_ArcRaiders && Ar.ReadBoolean()) Ar.SkipMultipleBulkArrayData(5);
 
         if (Ar.Game >= EGame.GAME_UE4_14)
         {
@@ -109,7 +121,7 @@ public class UStaticMesh : UObject
             if (FEditorObjectVersion.Get(Ar) >= FEditorObjectVersion.Type.RefactorMeshEditorMaterials)
             {
                 // UE4.14+ - "Materials" are deprecated, added StaticMaterials
-                StaticMaterials = bHasSpeedTreeWind ? GetOrDefault("StaticMaterials",  Array.Empty<FStaticMaterial>()) : Ar.ReadArray(() => new FStaticMaterial(Ar));
+                StaticMaterials = bHasSpeedTreeWind ? GetOrDefault("StaticMaterials", Array.Empty<FStaticMaterial>()) : Ar.ReadArray(() => new FStaticMaterial(Ar));
 
                 Materials = new ResolvedObject[StaticMaterials.Length];
                 for (var i = 0; i < Materials.Length; i++)
@@ -131,7 +143,7 @@ public class UStaticMesh : UObject
         {
             EGame.GAME_OutlastTrials => 1,
             EGame.GAME_Farlight84 or EGame.GAME_DuneAwakening => 4,
-            EGame.GAME_DaysGone => Ar.Read<int>() * 4,
+            EGame.GAME_DaysGone => Ar.Read<int>() * 4 + 4,
             _ => 0
         };
     }

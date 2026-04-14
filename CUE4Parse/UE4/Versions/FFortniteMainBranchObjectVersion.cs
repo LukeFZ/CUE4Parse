@@ -647,6 +647,177 @@ public static class FFortniteMainBranchObjectVersion
 
         // Cooked CPU-side morph target points are now stored internally in the same compressed format as the GPU morph data.
         MorphTargetCookedCPUDataCompressed,
+        
+        // AnimNext variables converted to references
+        AnimNextVariableReferences,
+        
+        // The default distortion rendering mode used by the Lens Component is now the Lens Distortion Scene View Extension
+        LensComponentDefaultToDistortionSVE,
+        
+        // Animation default blend option changed from Linear to HermiteCubic (aka SmoothStep, ease in / ease out)
+        ChangeDefaultAlphaBlendType,
+        
+        // Moved Position/Velocity/Projection Iteration Counts from FChaosVDFRigidParticleControlFlags to FChaosVDParticleDynamicMisc
+        PerParticleIterationCountMovedToDynamicMisc,
+        
+        // Added missing custom serialization for some properties in the ParticleDynamicMisc structure used by the Chaos Visual Debugger
+        AddedMissingSerializationForPropertiesInDynamicMisc,
+        
+        // Change default value for deprecated bEnableWorldPartitionGenerationSources
+        PCGDeprecateWorldPartitionGenerationSources,
+        
+        // Refactored the composite (plugin) actor scene capture management.
+        CompositeActorSceneCaptureRefactor,
+        
+        // Moved HLOD Layer properties to an editor only optional object
+        HLODLayerEditorOnlyObject,
+        
+        // Deduplicated particle debug names serialization in the Chaos Visual Debugger
+        DeduplicatedDebugNameSerializationInCVD,
+        
+        // Add BloomGaussianIntensity and BloomConvolutionIntensity
+        SpecializeBloomIntensity,
+        
+        // Add support for world partition actor component descriptors
+        WorldPartitionActorComponentDesc,
+        
+        // Migrate Non-Edit layer landscapes to use the edit layer (ULandscapeEditLayer) system
+        MigrateLandscapeNonEditLayerToEditLayer,
+        
+        // FDynamicMeshAttributeSet has Morph Targets.
+        DynamicMeshAttributesMorphTargets,
+        
+        // Introduce landscape advanced weight blending
+        LandscapeAdvancedWeightBlending,
+        
+        // Add support for FastGeo transformer setting assets
+        FastGeoTransformerSettingAssets,
+        
+        // UAF can now generate procedural systems for assets
+        UAFProceduralSystems,
+        
+        // Firefight: version 228 was introduced and backed out, adding it back to allow assets created in the meantime to load
+        Firefight_228,
+        
+        // Add default runtime state to FDataLayerInstanceDes
+        WorldPartitionDataLayerDefaultRuntimeState,
+        
+        // Introducing FGuid to UAF variable entries
+        UAFVariablesGuid,
+        
+        // Introducing FGuid cached to FAnimNext(Soft)VariableReference
+        UAFVariableReferenceGUID,
+
+        // Unified source color settings between img media & media io
+        MediaColorSettingsUnification,
+
+        // Changed behavior of the String Operation metadata node in PCG for Substring and Matches
+        PCGMetadataOpStringTypeChange,
+
+        // Compress LiveLink SubSection data
+        LiveLinkCompressSubSectionData,
+
+        // Added option to quantize chaos tri mesh BVH's per-face bounds
+        OptionalQuantizePerFaceBoundsInChaosTriMeshBVH,
+
+        // Add Dataflow Graph Topology Guid to UE::Dataflow:FGraph
+        DataflowAddGraphTopologyGuid,
+
+        // Add material usage flag for mesh deformers
+        AddMeshDeformerUsageFlag,
+
+        // Add landscape texture patch alpha override for height/weight patches
+        LandscapeTexturePatchAlphaOverride,
+
+        // For SpawnActor/AddComponent, allow template to be used for the spawned actor.
+        PCGAllowTemplateWhenSpawningFromAttribute,
+
+        // Chaos collision filters extension from 32 to 64 bit
+        CollisionFilter64Bit,
+
+        // Add the concept of UAFAssetData
+        UAFAssetData,
+
+        // Add an additional rotation offset to root motion modifier and deprecate the 'Opposite' rotation methods
+        RootMotionModifierRotationOffset,
+
+        // Update PolyBezierSpline internal storage structure to use 3 control points per segment instead of 4
+        PolyBezierSplineAnchorTripleLayout,
+
+        // Repairing verse data where we introduced -0.0 value when we flipped the coordinate system
+        VerseRepairDataWithMinusZeroValue,
+
+        // Add new enum property to composite (plugin) UCompositePassColorKeyer to control keying settings
+        CompositePassKeyerSource,
+
+        // OpenColorIO library update to v2.5.1 which transitions from ACES 1.3 to ACES 2.0 defaults
+        OpenColorIOv251,
+
+        // Reparameterize Spline in SplineComponent based on SplineCurves parameterization
+        SplineComponentReparameterizeOnLoad,
+
+        // Deprecating support for external UPackage storing UAF asset entries
+        DeprecateUAFExternalPackages,
+
+        // RigVM object pins hold an object ptr
+        RigVMPinDefaultValueObjectPtr,
+
+        // AnimSequenceTracks now have timestamps
+        AnimSequenceTrackTimestamps,
+
+        // Outdated version bump that was kept for data integrity.
+        PCG_PropertyBagHierarchySupport_Outdated,
+
+        // PCG Graph's Instanced Property Bags now support Hierarchy Editor, post loading existing data into new format
+        PCG_PropertyBagHierarchySupport,
+
+        // Introduce per-proxy overridable landscape grass 
+        OverridableLandscapeGrassTypes,
+
+        // AnimSequenceTransformProviderData now has bounds.
+        AnimSequenceTransformProviderBounds,
+
+        // UEnum now have Underlyingtype
+        EnumUnderlyingType,
+
+        // Composite layer name deprecation
+        Composite_LayerNameDeprecation,
+
+        // FDynamicMeshAttributeSet has triangle labels
+        DynamicMeshAttributesTriangleLabels,
+
+        // Remove RF_Public on entity components and subobjects
+        FixPublicEntityComponentsAndSubobjects,
+
+        // Added override flag for Physical Material
+        AddPhysMatOverrideFlag,
+
+        // Added context DevNotes for translators to FText
+        AddDevNotesToFText,
+
+        // Added default color override for PCG Mesh Sampler and fix bounds in PCG Subdivide Spline
+        PCGMeshSamplerDefaultColorPCGSubdivideSplineBoundsFixes,
+
+        // Serializable dynamic delegate payloads
+        DynamicDelegatePayloads,
+
+        // Compact representation of serializable dynamic delegate payloads which avoids shifting binary data
+        CompactDynamicDelegatePayloads,
+
+        // Added bone attachment serialization for UInstancedSkinnedMeshComponent
+        InstancedSkinnedMeshBoneAttachments,
+
+        // Added toggle to show/hide per-pin attribute creation settings on PCG Custom HLSL nodes
+        PCGCustomHLSLAttributeCreationSettingsToggle,
+
+        // Converting FPCGMetadataAttribute<T> to Generic attributes. 
+        ConvertFPCGMetadataAttributeToGenericAttributes,
+
+        // Merging PCG Metadata Attribute base and Generic ones. 
+        MergePCGMetadataAttributeBaseAndGeneric,
+
+        // AnimSequenceTransformProviderData supports multiple layers
+        AnimSequenceTransformProviderLayers,
 
         // -----<new versions can be added above this line>-------------------------------------------------
         VersionPlusOne,
@@ -663,6 +834,7 @@ public static class FFortniteMainBranchObjectVersion
 
         return Ar.Game switch
         {
+              EGame.GAME_Aion2 => Type.WorldPartitionHLODActorDescSerializeSourceHLODLayer,
             < EGame.GAME_UE4_20 => Type.BeforeCustomVersionWasAdded,
             < EGame.GAME_UE4_21 => Type.CachedMaterialQualityNodeUsage,
             < EGame.GAME_UE4_22 => Type.FoliageLazyObjPtrToSoftObjPtr,
@@ -678,6 +850,7 @@ public static class FFortniteMainBranchObjectVersion
             < EGame.GAME_UE5_5 => Type.SkeletalHalfEdgeData,
             < EGame.GAME_UE5_6 => Type.SolverIterationsDataSupportInChaosVisualDebugger,
             < EGame.GAME_UE5_7 => Type.PCGChangedSurfaceSamplerDefaultGridCreationMode,
+            < EGame.GAME_UE5_8 => Type.LandscapeAdvancedWeightBlending,
             _ => Type.LatestVersion
         };
     }

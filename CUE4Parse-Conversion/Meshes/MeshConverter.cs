@@ -95,7 +95,7 @@ public static class MeshConverter
             }
 
             if (numTexCoords > Constants.MAX_MESH_UV_SETS)
-                throw new ParserException($"Static mesh has too many UV sets ({numTexCoords})");
+                Log.Warning($"Static mesh has too many UV sets ({numTexCoords})");
 
             var screenSize = 0.0f;
             if (i < originalMesh.RenderData.ScreenSize.Length)
@@ -110,7 +110,15 @@ public static class MeshConverter
                 HasNormals = true,
                 HasTangents = true,
                 IsTwoSided = srcLod.CardRepresentationData?.bMostlyTwoSided ?? false,
-                Indices = new Lazy<FRawStaticIndexBuffer>(srcLod.IndexBuffer!),
+                Indices = new Lazy<uint[]>(() =>
+                {
+                    if (srcLod.IndexBuffer?.Buffer == null)
+                        throw new ParserException("Static mesh LOD has no index buffer");
+
+                    var copy = new uint[srcLod.IndexBuffer.Buffer.Length];
+                    Array.Copy(srcLod.IndexBuffer.Buffer, copy, copy.Length);
+                    return copy;
+                }),
                 Sections = new Lazy<CMeshSection[]>(() =>
                 {
                     var sections = new CMeshSection[srcLod.Sections.Length];
@@ -141,8 +149,6 @@ public static class MeshConverter
             for (var j = 0; j < numVerts; j++)
             {
                 var suv = srcLod.VertexBuffer.UV[j];
-                if (suv.Normal[1].Data != 0)
-                    throw new ParserException("Not implemented: should only be used in UE3");
 
                 var pos = srcLod.PositionVertexBuffer.Verts[j];
                 if (spline != null) // TODO normals
@@ -171,7 +177,9 @@ public static class MeshConverter
             convertedMesh.LODs.Add(staticMeshLod);
         }
 
-        if (naniteFormat != ENaniteMeshFormat.OnlyNormalLODs && TryConvertNaniteMesh(originalMesh, out CStaticMeshLod? naniteMesh) && naniteMesh is not null)
+        var lodsCount = convertedMesh.LODs.Count;
+        if ((lodsCount == 0 || naniteFormat != ENaniteMeshFormat.OnlyNormalLODs)
+            && TryConvertNaniteMesh(originalMesh, out CStaticMeshLod? naniteMesh) && naniteMesh is not null)
         {
             switch (naniteFormat)
             {
@@ -184,6 +192,9 @@ public static class MeshConverter
                     convertedMesh.LODs.Insert(0, naniteMesh);
                     break;
                 case ENaniteMeshFormat.AllLayersNaniteLast:
+                    convertedMesh.LODs.Add(naniteMesh);
+                    break;
+                case ENaniteMeshFormat.OnlyNormalLODs when lodsCount == 0:
                     convertedMesh.LODs.Add(naniteMesh);
                     break;
             }
@@ -274,7 +285,7 @@ public static class MeshConverter
             HasNormals = true,
             HasTangents = bHasTangents,
             IsTwoSided = true,
-            Indices = new Lazy<FRawStaticIndexBuffer>(new FRawStaticIndexBuffer() { Indices32 = triBuffer }),
+            Indices = new Lazy<uint[]>(triBuffer),
             Sections = new Lazy<CMeshSection[]>(matSections)
         };
         outMesh.AllocateVerts((int) numVerts);
@@ -378,7 +389,7 @@ public static class MeshConverter
 
             var numTexCoords = srcLod.NumTexCoords;
             if (numTexCoords > Constants.MAX_MESH_UV_SETS)
-                throw new ParserException($"Skeletal mesh has too many UV sets ({numTexCoords})");
+                Log.Warning($"Skeletal mesh has too many UV sets ({numTexCoords})");
 
             var skeletalMeshLod = new CSkelMeshLod
             {
@@ -386,9 +397,14 @@ public static class MeshConverter
                 ScreenSize = originalMesh.LODInfo[i].ScreenSize.Default,
                 HasNormals = true,
                 HasTangents = true,
-                Indices = new Lazy<FRawStaticIndexBuffer>(() => new FRawStaticIndexBuffer
+                Indices = new Lazy<uint[]>(() =>
                 {
-                    Indices16 = srcLod.Indices.Indices16, Indices32 = srcLod.Indices.Indices32
+                    if (srcLod.Indices?.Buffer == null)
+                        throw new ParserException("Skeletal mesh LOD has no index buffer");
+
+                    var copy = new uint[srcLod.Indices.Buffer.Length];
+                    Array.Copy(srcLod.Indices.Buffer, copy, copy.Length);
+                    return copy;
                 }),
                 Sections = new Lazy<CMeshSection[]>(() =>
                 {
@@ -507,7 +523,7 @@ public static class MeshConverter
                 var scale = v.Infs.bUse16BitBoneWeight ? Constants.UShort_Bone_Scale : Constants.Byte_Bone_Scale;
                 foreach (var (weight, boneIndex) in v.Infs.BoneWeight.Zip(v.Infs.BoneIndex))
                 {
-                    if (weight != 0f)
+                    if (weight != 0)
                     {
                         var bone = boneMap[boneIndex];
                         skeletalMeshLod.Verts[vert].AddInfluence(bone, weight, weight * scale);
@@ -550,11 +566,7 @@ public static class MeshConverter
         v.Tangent = normal[0];
         v.Normal = normal[2];
 
-        // new UE3 version - binormal is not serialized and restored in vertex shader
-        if (normal[1] is not null && normal[1].Data != 0)
-        {
-            throw new NotImplementedException();
-        }
+        // UE3 - normal[1] not restored in vertex shader
     }
 
     public static bool TryConvert(this ALandscapeProxy landscape, ULandscapeComponent[]? landscapeComponents, ELandscapeExportFlags flags, out CStaticMesh? convertedMesh, out Dictionary<string,Image> heightMaps, out Dictionary<string, SKBitmap> weightMaps)
@@ -774,40 +786,41 @@ public static class MeshConverter
             new CMeshSection(0, 0, triangleCount, mat?.Name ?? "DefaultMaterial", landscapeMaterial.ResolvedObject)
         });
 
-        var meshIndices = new List<uint>(triangleCount * 3); // TODO: replace with ArrayPool.Shared.Rent
-        // https://github.com/EpicGames/UnrealEngine/blob/5de4acb1f05e289620e0a66308ebe959a4d63468/Engine/Source/Editor/UnrealEd/Private/Fbx/FbxMainExport.cpp#L4657
-        for (int componentIndex = 0; componentIndex < numComponents; componentIndex++)
+        landscapeLod.Indices = new Lazy<uint[]>(() =>
         {
-            int baseVertIndex = componentIndex * vertexCountPerComponent;
-
-            for (int Y = 0; Y < componentSizeQuads; Y++)
+            var meshIndices = new List<uint>(triangleCount * 3); // TODO: replace with ArrayPool.Shared.Rent
+            // https://github.com/EpicGames/UnrealEngine/blob/5de4acb1f05e289620e0a66308ebe959a4d63468/Engine/Source/Editor/UnrealEd/Private/Fbx/FbxMainExport.cpp#L4657
+            for (int componentIndex = 0; componentIndex < numComponents; componentIndex++)
             {
-                for (int X = 0; X < componentSizeQuads; X++)
+                int baseVertIndex = componentIndex * vertexCountPerComponent;
+
+                for (int Y = 0; Y < componentSizeQuads; Y++)
                 {
-                    if (true) // (VisibilityData[BaseVertIndex + Y * (ComponentSizeQuads + 1) + X] < VisThreshold)
+                    for (int X = 0; X < componentSizeQuads; X++)
                     {
-                        var w1 = baseVertIndex + (X + 0) + (Y + 0) * (componentSizeQuads + 1);
-                        var w2 = baseVertIndex + (X + 1) + (Y + 1) * (componentSizeQuads + 1);
-                        var w3 = baseVertIndex + (X + 1) + (Y + 0) * (componentSizeQuads + 1);
+                        if (true) // (VisibilityData[BaseVertIndex + Y * (ComponentSizeQuads + 1) + X] < VisThreshold)
+                        {
+                            var w1 = baseVertIndex + (X + 0) + (Y + 0) * (componentSizeQuads + 1);
+                            var w2 = baseVertIndex + (X + 1) + (Y + 1) * (componentSizeQuads + 1);
+                            var w3 = baseVertIndex + (X + 1) + (Y + 0) * (componentSizeQuads + 1);
 
-                        meshIndices.Add((uint)w1);
-                        meshIndices.Add((uint)w2);
-                        meshIndices.Add((uint)w3);
+                            meshIndices.Add((uint)w1);
+                            meshIndices.Add((uint)w2);
+                            meshIndices.Add((uint)w3);
 
-                        var w4 = baseVertIndex + (X + 0) + (Y + 0) * (componentSizeQuads + 1);
-                        var w5 = baseVertIndex + (X + 0) + (Y + 1) * (componentSizeQuads + 1);
-                        var w6 = baseVertIndex + (X + 1) + (Y + 1) * (componentSizeQuads + 1);
+                            var w4 = baseVertIndex + (X + 0) + (Y + 0) * (componentSizeQuads + 1);
+                            var w5 = baseVertIndex + (X + 0) + (Y + 1) * (componentSizeQuads + 1);
+                            var w6 = baseVertIndex + (X + 1) + (Y + 1) * (componentSizeQuads + 1);
 
-                        meshIndices.Add((uint)w4);
-                        meshIndices.Add((uint)w5);
-                        meshIndices.Add((uint)w6);
+                            meshIndices.Add((uint)w4);
+                            meshIndices.Add((uint)w5);
+                            meshIndices.Add((uint)w6);
+                        }
                     }
                 }
             }
-        }
-
-        landscapeLod.Indices = new Lazy<FRawStaticIndexBuffer>(new FRawStaticIndexBuffer { Indices32 = meshIndices.ToArray() });
-        meshIndices.Clear();
+            return meshIndices.ToArray();
+        });
 
         convertedMesh = new CStaticMesh();
 

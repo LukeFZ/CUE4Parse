@@ -1,31 +1,43 @@
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Readers;
+using CUE4Parse.UE4.Versions;
 
 namespace CUE4Parse.UE4.Assets.Exports.Material;
 
 public class FMaterialResourceProxyReader : FArchive
 {
     protected readonly FArchive InnerArchive;
-    public FNameEntrySerialized[]? NameMap;
-    public FMaterialResourceLocOnDisk[]? Locs;
-    private long _offsetToFirstResource;
-    public readonly bool isGlobal;
+    public bool bUseNewFormat;
+    private readonly FNameEntrySerialized[]? _nameMap;
+    private readonly bool _readNameMap;
 
-    public FMaterialResourceProxyReader(FArchive Ar, bool bIsGlobal = false) : base(Ar.Versions)
+    public FMaterialResourceProxyReader(FArchive Ar, bool bReadNameMap = true) : base(Ar.Versions)
     {
         InnerArchive = Ar;
-        isGlobal = bIsGlobal;
-        if (!isGlobal)
+        bUseNewFormat = Ar.Versions["ShaderMap.UseNewCookedFormat"];
+        _readNameMap = bReadNameMap;
+        
+        if (!bReadNameMap && Ar is FAssetArchive assetArchive)
         {
-            NameMap = InnerArchive.ReadArray(() => new FNameEntrySerialized(Ar));
-            Locs = InnerArchive.ReadArray<FMaterialResourceLocOnDisk>();
-            var _ = InnerArchive.Read<int>(); // NumBytes
+            _nameMap = assetArchive.Owner?.NameMap;
+            _readNameMap = true;
+            return;
         }
-        _offsetToFirstResource = InnerArchive.Position;
+        
+        if (_readNameMap)
+        {
+            _nameMap = InnerArchive.ReadArray(() => new FNameEntrySerialized(Ar));
+            var num = Ar.Read<int>();
+            Ar.Position += num * Unsafe.SizeOf<FMaterialResourceLocOnDisk>(); // Locs
+            if (Ar.Game is EGame.GAME_ArenaBreakoutInfinite) Ar.Position += num;
+            if (Ar.Game is EGame.GAME_RocoKingdomWorld) Ar.Position += num * 5;
+            Ar.Position += 4; // NumBytes
+        }
     }
 
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
@@ -43,13 +55,16 @@ public class FMaterialResourceProxyReader : FArchive
         var nameIndex = InnerArchive.Read<int>();
         var number = InnerArchive.Read<int>();
 #if !NO_FNAME_VALIDATION
-        if (nameIndex < 0 || nameIndex >= NameMap.Length)
+        if (nameIndex < 0 || nameIndex >= _nameMap!.Length)
         {
-            throw new ParserException(InnerArchive, $"FName could not be read, requested index {nameIndex}, name map size {NameMap.Length}");
+            throw new ParserException(InnerArchive, $"FName could not be read, requested index {nameIndex}, name map size {_nameMap.Length}");
         }
 #endif
-        return new FName(NameMap[nameIndex], nameIndex, number);
+        return new FName(_nameMap[nameIndex], nameIndex, number);
     }
+
+    public string ReadFString(bool bReadNameMap) => bReadNameMap ? ReadFName().PlainText : base.ReadFString();
+    public override string ReadFString() => ReadFString(_readNameMap);
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public override int Read(byte[] buffer, int offset, int count)

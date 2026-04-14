@@ -19,6 +19,8 @@ public class UAkAudioEvent : UAkAudioType
         if (Ar.Position >= validPos) return;
 
         EventCookedData = new FWwiseLocalizedEventCookedData(new FStructFallback(Ar, "WwiseLocalizedEventCookedData"));
+        EventCookedData?.SerializeBulkData(Ar);
+
         MaximumDuration = Ar.Read<float>();
         MinimumDuration = Ar.Read<float>();
         IsInfinite = Ar.ReadBoolean();
@@ -47,3 +49,6 @@ public class UAkAudioEvent : UAkAudioType
         writer.WriteValue(MaxAttenuationRadius);
     }
 }
+
+public class UWuiEvent : UAkAudioEvent; // The Awesome Adventures of Captain Spirit
+public class UWwiseEvent : UAkAudioEvent; // Borderlands 3

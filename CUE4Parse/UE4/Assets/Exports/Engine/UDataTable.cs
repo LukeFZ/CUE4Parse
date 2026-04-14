@@ -5,13 +5,14 @@ using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
+using Serilog;
 
 namespace CUE4Parse.UE4.Assets.Exports.Engine;
 
 public class UDataTable : UObject
 {
     public Dictionary<FName, FStructFallback> RowMap { get; private set; }
-    protected string? RowStructName { get; set; } // Only used if set from inheritor
+    public string? RowStructName { get; protected set; } // Set by inheritor or during deserialization
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
@@ -21,9 +22,17 @@ public class UDataTable : UObject
         UStruct? rowStruct = null;
         if (string.IsNullOrEmpty(RowStructName))
         {
-            var ptr = GetOrDefault<FPackageIndex>("RowStruct");
-            if (ptr is not null && !ptr.TryLoad<UStruct>(out rowStruct))
+            var ptr = GetOrDefault<FPackageIndex?>("RowStruct");
+            if (ptr != null)
+            {
                 RowStructName = ptr.Name;
+                ptr.TryLoad<UStruct>(out rowStruct);
+            }
+            else
+            {
+                Log.Warning("Can't find or load RowStruct type to serialize DataTable");
+                return;
+            }
         }
 
         var numRows = Ar.Read<int>();
@@ -38,6 +47,7 @@ public class UDataTable : UObject
         {
             var DataTableName = Ar.ReadFString();
             var MetaData = Ar.ReadMap(Ar.ReadFString, () => Ar.ReadMap(Ar.ReadFName, Ar.ReadFString));
+            CustomGameData = (Name: DataTableName, Metadata: MetaData);
         }
     }
 

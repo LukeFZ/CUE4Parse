@@ -8,6 +8,7 @@ using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.UE4.Writers;
 using CUE4Parse.Utils;
+using FixedMathSharp;
 using static System.MathF;
 
 namespace CUE4Parse.UE4.Objects.Core.Math
@@ -67,20 +68,10 @@ namespace CUE4Parse.UE4.Objects.Core.Math
 
         public FQuat(FArchive Ar)
         {
-            if (Ar.Ver >= EUnrealEngineObjectUE5Version.LARGE_WORLD_COORDINATES)
-            {
-                X = (float) Ar.Read<double>();
-                Y = (float) Ar.Read<double>();
-                Z = (float) Ar.Read<double>();
-                W = (float) Ar.Read<double>();
-            }
-            else
-            {
-                X = Ar.Read<float>();
-                Y = Ar.Read<float>();
-                Z = Ar.Read<float>();
-                W = Ar.Read<float>();
-            }
+            X = Ar.ReadFReal();
+            Y = Ar.ReadFReal();
+            Z = Ar.ReadFReal();
+            W = Ar.ReadFReal();
         }
 
         private static int[] matrixNxt = {1, 2, 0};
@@ -421,6 +412,7 @@ namespace CUE4Parse.UE4.Objects.Core.Math
         public static FQuat operator +(FQuat a, FQuat b) => new FQuat(a.X + b.X, a.Y + b.Y, a.Z + b.Z, a.W + b.W);
 
         public static implicit operator Quaternion(FQuat v) => new(v.X, v.Y, v.Z, v.W);
+        public static implicit operator FQuat(FixedQuaternion v) => new((float)v.x, (float)v.y, (float)v.z, (float)v.w);
 
         public readonly bool Equals(FQuat other) => Equals(other, UnrealMath.KindaSmallNumber);
 

@@ -19,12 +19,13 @@ public class UTexture2D : UTexture
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
+        if (Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 12;
         base.Deserialize(Ar, validPos);
         ImportedSize = GetOrDefault<FIntPoint>(nameof(ImportedSize));
         AddressX = GetOrDefault<TextureAddress>(nameof(AddressX));
         AddressY = GetOrDefault<TextureAddress>(nameof(AddressY));
 
-        var stripDataFlags = Ar.Read<FStripDataFlags>();
+        var stripDataFlags = new FStripDataFlags(Ar);
         var bCooked = Ar.Ver >= EUnrealEngineObjectUE4Version.ADD_COOKED_TO_TEXTURE2D && Ar.ReadBoolean();
         if (Ar.Ver < EUnrealEngineObjectUE4Version.TEXTURE_SOURCE_ART_REFACTOR)
         {
@@ -52,11 +53,13 @@ public class UTexture2D : UTexture
         if (bCooked)
         {
             var bSerializeMipData = true;
-            if (Ar.Game >= EGame.GAME_UE5_3)
+            if (Ar.Game >= EGame.GAME_UE5_3 || Ar.Game == EGame.GAME_TheFirstDescendant)
             {
                 // Controls whether FByteBulkData is serialized??
                 bSerializeMipData = Ar.ReadBoolean();
             }
+
+            if (Ar.Position >= validPos) return;
 
             DeserializeCookedPlatformData(Ar, bSerializeMipData);
         }

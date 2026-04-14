@@ -4,7 +4,6 @@ using CUE4Parse.Compression;
 using CUE4Parse.UE4.Assets.Exports.ControlRig.Rigs;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.ControlRig;
-using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
@@ -48,7 +47,7 @@ public class URigHierarchy : UObject
                 OodleHelper.Decompress(compressedBytes, 0, compressedBytes.Length, uncompressedBytes, 0, uncompressedBytes.Length);
             }
 
-            var baseArchive = new FByteArchive("Archive for elements", bStoreCompressedBytes ? uncompressedBytes : compressedBytes, Ar.Versions);
+            using var baseArchive = new FByteArchive("Archive for elements", bStoreCompressedBytes ? uncompressedBytes : compressedBytes, Ar.Versions);
             archiveForElements = new FRigHierarchyArchive(baseArchive, uniqueNames);
         }
         else
@@ -57,13 +56,14 @@ public class URigHierarchy : UObject
         }
 
         bool bAllocateStoragePerElement = FControlRigObjectVersion.Get(archiveForElements) < FControlRigObjectVersion.Type.RigHierarchyIndirectElementStorage;
+        if (Ar.Game == EGame.GAME_Aion2) bAllocateStoragePerElement = false;
 
         var elementCount = archiveForElements.Read<int>();
         Elements = new FRigBaseElement[elementCount];
         for (var elementIndex = 0; elementIndex < elementCount; elementIndex++)
         {
             var key = new FRigElementKey(archiveForElements);
-            FRigBaseElement element = key.Type switch
+            var element = key.Type switch
             {
                 ERigElementType.Bone => new FRigBoneElement(),
                 ERigElementType.Null => new FRigNullElement(),

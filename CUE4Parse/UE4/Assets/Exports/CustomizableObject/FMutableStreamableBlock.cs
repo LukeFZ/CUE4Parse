@@ -1,17 +1,10 @@
-﻿using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Readers;
 
 namespace CUE4Parse.UE4.Assets.Exports.CustomizableObject;
 
-public class FMutableStreamableBlock
+public readonly struct FMutableStreamableBlock(FArchive Ar)
 {
-    public uint FileId;
-    public uint Flags;
-    public ulong Offset;
-
-    public FMutableStreamableBlock(FAssetArchive Ar)
-    {
-        FileId = Ar.Read<uint>();
-        Flags = Ar.Read<uint>();
-        Offset = Ar.Read<ulong>();
-    }
+    public readonly uint FileId = Ar.Read<uint>();
+    public readonly uint Flags = Ar.Game >= Versions.EGame.GAME_UE5_6 ? Ar.Read<ushort>() : Ar.Read<uint>();
+    public readonly ulong Offset = Ar.Read<ulong>();
 }

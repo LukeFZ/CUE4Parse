@@ -10,7 +10,6 @@ public class AkFolder
     public readonly uint Offset;
     public readonly uint Id;
     public string? Name;
-    public AkEntry[] Entries = [];
 
     public AkFolder(FArchive Ar)
     {
@@ -18,8 +17,9 @@ public class AkFolder
         Id = Ar.Read<uint>();
     }
 
-    public void PopulateName(FArchive Ar)
+    public void PopulateName(FArchive Ar, long namesOffset)
     {
+        Ar.Position = namesOffset + Offset;
         var sb = new StringBuilder();
         while (true)
         {

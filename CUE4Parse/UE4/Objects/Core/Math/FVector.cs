@@ -6,6 +6,7 @@ using CUE4Parse.UE4.Readers;
 using CUE4Parse.UE4.Versions;
 using CUE4Parse.UE4.Writers;
 using CUE4Parse.Utils;
+using FixedMathSharp;
 
 namespace CUE4Parse.UE4.Objects.Core.Math
 {
@@ -52,18 +53,9 @@ namespace CUE4Parse.UE4.Objects.Core.Math
 
         public FVector(FArchive Ar)
         {
-            if (Ar.Ver >= EUnrealEngineObjectUE5Version.LARGE_WORLD_COORDINATES)
-            {
-                X = (float) Ar.Read<double>();
-                Y = (float) Ar.Read<double>();
-                Z = (float) Ar.Read<double>();
-            }
-            else
-            {
-                X = Ar.Read<float>();
-                Y = Ar.Read<float>();
-                Z = Ar.Read<float>();
-            }
+            X = Ar.ReadFReal();
+            Y = Ar.ReadFReal();
+            Z = Ar.ReadFReal();
         }
 
         /// <summary>
@@ -580,5 +572,6 @@ namespace CUE4Parse.UE4.Objects.Core.Math
         }
 
         public static implicit operator Vector3(FVector v) => new(v.X, v.Y, v.Z);
+        public static implicit operator FVector(Vector3d v) => new((float)v.x, (float)v.y, (float)v.z);
     }
 }

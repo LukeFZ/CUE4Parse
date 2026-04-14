@@ -1,36 +1,30 @@
-﻿using CUE4Parse.UE4.Assets.Exports.CustomizableObject.Mutable;
+using CUE4Parse.UE4.Assets.Exports.CustomizableObject.Mutable;
 using CUE4Parse.UE4.Assets.Readers;
+using CUE4Parse.UE4.Versions;
+using Newtonsoft.Json;
 
 namespace CUE4Parse.UE4.Assets.Exports.CustomizableObject;
 
 public class UCustomizableObject : UObject
 {
-    // private const int CurrentVersion = 414;
-
-    public FMorphTargetInfo[] ContributingMorphTargetsInfo;
-    public FMorphTargetVertexData[] MorphTargetReconstructionData;
-    public FCustomizableObjectMeshToMeshVertData[] ClothMeshToMeshVertData;
-    public FCustomizableObjectClothingAssetData[] ContributingClothingAssetsData;
-    public FCustomizableObjectClothConfigData[] ClothSharedConfigsData;
+    public long InternalVersion;
+    public FModel? Model;
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
 
-        var version = Ar.Read<int>();
+        InternalVersion = Ar.Game >= EGame.GAME_UE5_6 ? Ar.Read<long>() : Ar.Read<int>();
+        if (InternalVersion != -1)
+            Model = new FModel(new FMutableArchive(Ar));
+    }
 
-        // // if (CurrentVersion == version)
-        // {
-        //     ContributingMorphTargetsInfo = Ar.ReadArray<FMorphTargetInfo>();
-        //     MorphTargetReconstructionData = Ar.ReadArray<FMorphTargetVertexData>();
-        // }
-
-        // {
-        //     ClothMeshToMeshVertData = Ar.ReadBulkArray(() => new FCustomizableObjectMeshToMeshVertData(Ar));
-        //     ContributingClothingAssetsData = Ar.ReadArray(() => new FCustomizableObjectClothingAssetData(Ar));
-        //     ClothSharedConfigsData = Ar.ReadArray(() => new FCustomizableObjectClothConfigData(Ar));
-        // }
-
-        // var model = new Model(Ar);
+    protected internal override void WriteJson(JsonWriter writer, JsonSerializer serializer)
+    {
+        base.WriteJson(writer, serializer);
+        writer.WritePropertyName(nameof(InternalVersion));
+        writer.WriteValue(InternalVersion);
+        writer.WritePropertyName(nameof(Model));
+        serializer.Serialize(writer, Model);
     }
 }

@@ -24,7 +24,14 @@ public class UScriptArray
         Properties = [];
     }
 
-    public UScriptArray(FAssetArchive Ar, FPropertyTagData? tagData, int size)
+    public UScriptArray(List<FPropertyTagType> properties, string innerType, FPropertyTagData? innerTagData = null)
+    {
+        InnerType = innerType;
+        InnerTagData = innerTagData;
+        Properties = properties;
+    }
+
+    public UScriptArray(FAssetArchive Ar, FPropertyTagData? tagData, ReadType type, int size)
     {
         InnerType = tagData?.InnerType ?? throw new ParserException(Ar, "UScriptArray needs inner type");
         var elementCount = Ar.Read<int>();
@@ -35,7 +42,7 @@ public class UScriptArray
                 $"ArrayProperty element count {elementCount} is larger than the remaining archive size {Ar.Length - Ar.Position}");
         }
 
-        if (Ar.HasUnversionedProperties)
+        if (Ar.HasUnversionedProperties || Ar.Game < EGame.GAME_UE4_0)
         {
             InnerTagData = tagData.InnerTypeData;
         }
@@ -62,6 +69,7 @@ public class UScriptArray
         Properties = new List<FPropertyTagType>(elementCount);
         if (elementCount == 0) return;
 
+        var readType = type == ReadType.RAW ? ReadType.RAW : ReadType.ARRAY;
         // special case for ByteProperty, as it can be read as a single byte or as EnumProperty
         if (InnerType == "ByteProperty")
         {
@@ -69,22 +77,22 @@ public class UScriptArray
             if (!Ar.HasUnversionedProperties) enumprop = (size - sizeof(int)) / elementCount > 1;
             for (var i = 0; i < elementCount; i++)
             {
-                var property = enumprop ? (FPropertyTagType?) new EnumProperty(Ar, InnerTagData, ReadType.ARRAY) : new ByteProperty(Ar, ReadType.ARRAY);
+                var property = enumprop ? (FPropertyTagType?) new EnumProperty(Ar, InnerTagData, readType) : new ByteProperty(Ar, readType);
                 if (property != null)
                     Properties.Add(property);
                 else
-                    Log.Debug($"Failed to read array property of type {InnerType} at ${Ar.Position}, index {i}");
+                    Log.Debug($"Failed to read array property of type {InnerType} at {Ar.Position}, index {i}");
             }
             return;
         }
 
         for (var i = 0; i < elementCount; i++)
         {
-            var property = FPropertyTagType.ReadPropertyTagType(Ar, InnerType, InnerTagData, ReadType.ARRAY);
+            var property = FPropertyTagType.ReadPropertyTagType(Ar, InnerType, InnerTagData, readType);
             if (property != null)
                 Properties.Add(property);
             else
-                Log.Debug($"Failed to read array property of type {InnerType} at ${Ar.Position}, index {i}");
+                Log.Debug($"Failed to read array property of type {InnerType} at {Ar.Position}, index {i}");
         }
     }
 

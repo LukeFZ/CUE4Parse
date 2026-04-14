@@ -29,7 +29,7 @@ public class USceneComponent : UActorComponent
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
-
+        if (Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 4;
         var bComputeBoundsOnceForGame = GetOrDefault<bool>("bComputeBoundsOnceForGame");
         var bComputedBoundsOnceForGame = GetOrDefault<bool>("bComputedBoundsOnceForGame");
         var bComputeBounds = bComputeBoundsOnceForGame || bComputedBoundsOnceForGame;
@@ -46,13 +46,13 @@ public class USceneComponent : UActorComponent
     {
         var current = this;
         FVector? topMostScale = null;
-        
+
         while (current != null)
         {
             var foundLoc = current.TryGetValue(out FVector loc, "RelativeLocation");
             var foundRot = current.TryGetValue(out FRotator rot, "RelativeRotation");
             var foundScale = current.TryGetValue(out FVector scale, "RelativeScale3D");
-            
+
             // keep the top-most scale if found
             if (foundScale && topMostScale == null)
             {
@@ -67,7 +67,7 @@ public class USceneComponent : UActorComponent
             current = current.Template?.Load<USceneComponent>();
         }
 
-        return new FTransform(FRotator.ZeroRotator, FVector.ZeroVector, FVector.OneVector);
+        return new FTransform(FRotator.ZeroRotator, FVector.ZeroVector, topMostScale ?? FVector.OneVector);
     }
 
     public FTransform GetAbsoluteTransform()
@@ -120,6 +120,13 @@ public class USceneComponent : UActorComponent
     public FVector GetRelativeLocation() => GetOrDefault("RelativeLocation", FVector.ZeroVector);
     public FRotator GetRelativeRotation() => GetOrDefault("RelativeRotation", FRotator.ZeroRotator);
     public FVector GetRelativeScale3D() => GetOrDefault("RelativeScale3D", FVector.OneVector);
+
+    public void AddLocalRotation(FRotator deltaRotation)
+    {
+        var curRelRotQuat = GetRelativeRotation().Quaternion();
+        var newRelRotQuat = curRelRotQuat * deltaRotation.Quaternion();
+        PropertyUtil.Set(this, "RelativeRotation", newRelRotQuat.Rotator());
+    }
 
     protected internal override void WriteJson(JsonWriter writer, JsonSerializer serializer)
     {

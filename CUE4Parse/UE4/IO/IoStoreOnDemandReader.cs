@@ -1,7 +1,8 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using CUE4Parse.Encryption.Aes;
+using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.IO.Objects;
 using CUE4Parse.UE4.Readers;
@@ -12,25 +13,42 @@ namespace CUE4Parse.UE4.IO
 {
     public class IoStoreOnDemandReader : IoStoreReader
     {
-        public readonly FOnDemandTocEntry[] Entries;
+        public IoChunkToc ChunkToc { get; }
+        public FOnDemandTocContainerEntry Container { get; }
 
         private readonly IoStoreOnDemandDownloader _downloader;
 
-        public IoStoreOnDemandReader(FArchive tocStream, FOnDemandTocEntry[] entries, IoStoreOnDemandDownloader downloader)
+        public IoStoreOnDemandReader(FArchive tocStream, IoChunkToc chunkToc, FOnDemandTocContainerEntry container, IoStoreOnDemandDownloader downloader)
             : base(tocStream, it => new FByteArchive(it, Array.Empty<byte>(), tocStream.Versions))
         {
-            Entries = entries;
+            ChunkToc = chunkToc;
+            Container = container;
             _downloader = downloader;
         }
 
-        public override byte[] Extract(VfsEntry entry)
+        public override byte[] Extract(VfsEntry entry, FByteBulkDataHeader? header = null)
         {
-            if (!(entry is FIoStoreEntry ioEntry) || entry.Vfs != this) throw new ArgumentException($"Wrong io store reader, required {entry.Vfs.Path}, this is {Path}");
-            return Read(Entries[ioEntry.TocEntryIndex]);
+            if (entry is not FIoStoreEntry ioEntry || entry.Vfs != this)
+                throw new ArgumentException($"Wrong io store reader, required {entry.Vfs.Path}, this is {Path}");
+
+            return Read(ioEntry.ChunkId);
         }
 
-        public override byte[] Read(FIoChunkId chunkId) => Read(Entries.FirstOrDefault(entry => entry.ChunkId == chunkId));
+        public override byte[] Read(FIoChunkId chunkId)
+        {
+            if (ChunkToc.Header.IsLegacy)
+            {
+                return Read(Container.Entries.FirstOrDefault(entry => entry.ChunkId == chunkId));
+            }
 
+            var index = Array.IndexOf(Container.ContainerData.ChunkIds, chunkId);
+            if (index >= 0)
+            {
+                return Read(chunkId, Container.ContainerData.ChunkEntries[index]);
+            }
+
+            throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
+        }
         private byte[] Read(FOnDemandTocEntry? onDemandEntry)
         {
             if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
@@ -41,9 +59,19 @@ namespace CUE4Parse.UE4.IO
             throw new KeyNotFoundException($"Couldn't find chunk {onDemandEntry.ChunkId} in IoStoreOnDemand {Name}");
         }
 
+        private byte[] Read(FIoChunkId chunkId, FOnDemandChunkEntry? onDemandEntry)
+        {
+            if (onDemandEntry == null) throw new ParserException("Can't read unknown on-demand entry");
+            if (TryResolve(chunkId, out var offsetLength))
+            {
+                return Read(onDemandEntry.Hash.ToString().ToLower(), (long)offsetLength.Offset, (long)offsetLength.Length);
+            }
+            throw new KeyNotFoundException($"Couldn't find chunk {chunkId} in IoStoreOnDemand {Name}");
+        }
+
         private byte[] Read(string hash, long offset, long length)
         {
-            var reader = _downloader.Download($"chunks/{hash[..2]}/{hash}.iochunk").GetAwaiter().GetResult();
+            var reader = _downloader.Download($"{ChunkToc.Header.ChunksDirectory}/chunks/{hash[..2]}/{hash}.iochunk").GetAwaiter().GetResult();
 
             var compressionBlockSize = TocResource.Header.CompressionBlockSize;
             var dst = new byte[length];
@@ -74,7 +102,7 @@ namespace CUE4Parse.UE4.IO
                     uncompressedBuffer = new byte[uncompressedSize];
                 }
 
-                reader.Read(compressedBuffer, 0, (int) rawSize);
+                reader.ReadExactly(compressedBuffer, 0, (int) rawSize);
                 compressedBuffer = DecryptIfEncrypted(compressedBuffer, 0, (int) rawSize);
 
                 byte[] src;

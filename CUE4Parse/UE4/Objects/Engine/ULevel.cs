@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using CUE4Parse.UE4.Assets.Exports;
+using CUE4Parse.UE4.Assets.Exports.BuildData;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Objects.Core.Math;
 using CUE4Parse.UE4.Objects.UObject;
@@ -34,7 +35,8 @@ public readonly struct FCompressedVisibilityChunk : IUStruct
     {
         bCompressed = Ar.ReadBoolean();
         UncompressedSize = Ar.Read<int>();
-        Data = Ar.ReadArray<byte>();
+        Data = [];
+        Ar.SkipFixedArray(1);
     }
 }
 
@@ -70,6 +72,11 @@ public readonly struct FPrecomputedVisibilityHandler : IUStruct
         PrecomputedVisibilityCellBucketSizeXY = Ar.Read<int>();
         PrecomputedVisibilityNumCellBuckets = Ar.Read<int>();
         PrecomputedVisibilityCellBuckets = Ar.ReadArray(() => new FPrecomputedVisibilityBucket(Ar));
+        if (Ar.Game is EGame.GAME_IntotheRadius2)
+        {
+            _ = Ar.ReadArray(() => new FCompressedVisibilityChunk(Ar));
+            Ar.Position += 57;
+        }
     }
 }
 
@@ -95,6 +102,10 @@ public readonly struct FPrecomputedVolumeDistanceField : IUStruct
 
 public class ULevel : Assets.Exports.UObject
 {
+    public FPackageIndex WorldSettings;
+    public FPackageIndex WorldDataLayers;
+    public FSoftObjectPath WorldPartitionRuntimeCell;
+    
     public FPackageIndex?[] Actors;
     public FURL URL;
     public FPackageIndex Model;
@@ -108,6 +119,11 @@ public class ULevel : Assets.Exports.UObject
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
         base.Deserialize(Ar, validPos);
+        WorldSettings = GetOrDefault(nameof(WorldSettings), new FPackageIndex());
+        WorldDataLayers = GetOrDefault(nameof(WorldDataLayers), new FPackageIndex());
+        WorldPartitionRuntimeCell = GetOrDefault<FSoftObjectPath>(nameof(WorldPartitionRuntimeCell));
+        
+        if (Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 16;
         if (Flags.HasFlag(EObjectFlags.RF_ClassDefaultObject) || Ar.Position >= validPos) return;
         if (FReleaseObjectVersion.Get(Ar) < FReleaseObjectVersion.Type.LevelTransArrayConvertedToTArray) Ar.Position += 4;
         Actors = Ar.ReadArray(() => new FPackageIndex(Ar));
@@ -119,8 +135,17 @@ public class ULevel : Assets.Exports.UObject
         NavListStart = new FPackageIndex(Ar);
         NavListEnd = new FPackageIndex(Ar);
         if (Ar.Game == EGame.GAME_MetroAwakening && GetOrDefault<bool>("bIsLightingScenario")) return;
-        if (Ar.Game == EGame.GAME_StateOfDecay2 && Ar.ReadBoolean()) return;
+        if (FRenderingObjectVersion.Get(Ar) < FRenderingObjectVersion.Type.MapBuildDataSeparatePackage)
+        {
+            _ = new FPrecomputedLightVolumeData(Ar, false);
+        }
+        if (Ar.Game == EGame.GAME_OutlastTrials)
+        {
+            PrecomputedVolumeDistanceField = new FPrecomputedVolumeDistanceField(Ar);
+            return;
+        }
         PrecomputedVisibilityHandler = new FPrecomputedVisibilityHandler(Ar);
+        if (Ar.Game is EGame.GAME_AssaultFireFuture && Ar.Read<int>() != 0) return;
         PrecomputedVolumeDistanceField = new FPrecomputedVolumeDistanceField(Ar);
     }
 

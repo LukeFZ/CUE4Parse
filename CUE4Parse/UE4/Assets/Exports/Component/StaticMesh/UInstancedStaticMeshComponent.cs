@@ -25,6 +25,23 @@ public class UInstancedStaticMeshComponent : UStaticMeshComponent
             bCooked = Ar.ReadBoolean();
         }
 
+        if (Ar.Game is EGame.GAME_WutheringWaves && Ar.ReadFlag())
+        {
+            Ar.Position += 12;
+            var len = Ar.Read<int>();
+            for (int i = 0; i < len; i++)
+            {
+                Ar.Position += 12;
+                Ar.Position += Ar.ReadFlag() ? 3 : 7;
+            }
+
+            Ar.SkipFixedArray(4);
+            PerInstanceSMCustomData = Ar.ReadBulkArray(Ar.Read<float>);
+            Ar.Position += Ar.Read<long>()+8;
+            PerInstanceSMData = Ar.ReadBulkArray(() => new FInstancedStaticMeshInstanceData(Ar));
+            return;
+        }
+
         var bHasSkipSerializationPropertiesData = FFortniteMainBranchObjectVersion.Get(Ar) < FFortniteMainBranchObjectVersion.Type.ISMComponentEditableWhenInheritedSkipSerialization || Ar.ReadBoolean();
         if (bHasSkipSerializationPropertiesData)
         {
@@ -54,6 +71,21 @@ public class UInstancedStaticMeshComponent : UStaticMeshComponent
                         default:
                             throw new ParserException(Ar, $"Unknown element size {elementSize}");
                     }
+                    break;
+                case EGame.GAME_PlayerUnknownsBattlegrounds:
+                    elementSize = Ar.Read<int>();
+                    Ar.Position -= sizeof(int);
+                    if (elementSize is 100)
+                    {
+                        PerInstanceSMData = Ar.ReadBulkArray(() =>
+                        {
+                            var data = new FInstancedStaticMeshInstanceData(Ar);
+                            Ar.Position += 20;
+                            return data;
+                        });
+                    }
+                    else
+                        PerInstanceSMData = Ar.ReadBulkArray(() => new FInstancedStaticMeshInstanceData(Ar));
                     break;
                 default:
                     PerInstanceSMData = Ar.ReadBulkArray(() => new FInstancedStaticMeshInstanceData(Ar));
@@ -94,11 +126,13 @@ public class UInstancedStaticMeshComponent : UStaticMeshComponent
                 return;
             }
 
+            if (Ar.Game is EGame.GAME_AssaultFireFuture) Ar.SkipBulkArrayData();
+
             var renderDataSizeBytes = Ar.Read<ulong>();
             Ar.Position += (long) renderDataSizeBytes;
         }
 
-        if (Ar.Game == EGame.GAME_Valorant) Ar.Position += 4;
+        if (Ar.Game is EGame.GAME_Valorant) Ar.Position += 4;
     }
 
     public FInstancedStaticMeshInstanceData[] GetInstances() // PerInstanceSMData

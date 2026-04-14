@@ -3,6 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Text;
+using CUE4Parse.GameTypes._2XKO.Kismet;
+using CUE4Parse.GameTypes.Borderlands4.Kismet;
+using CUE4Parse.GameTypes.DFHO.Kismet;
+using CUE4Parse.GameTypes.WuWa.Kismet;
 using CUE4Parse.UE4.Exceptions;
 using CUE4Parse.UE4.Kismet;
 using CUE4Parse.UE4.Objects.UObject;
@@ -28,7 +32,7 @@ public class FKismetArchive : FArchive
     public KismetExpression ReadExpression()
     {
         var index = Index;
-        EExprToken token = (EExprToken)Read<byte>();
+        var token = (EExprToken)Read<byte>();
         KismetExpression expression = token switch
         {
             EExprToken.EX_LocalVariable => new EX_LocalVariable(this),
@@ -131,9 +135,15 @@ public class FKismetArchive : FArchive
             EExprToken.EX_AutoRtfmStopTransact => new EX_AutoRtfmStopTransact(this),
             EExprToken.EX_AutoRtfmTransact => new EX_AutoRtfmTransact(this),
             EExprToken.EX_AutoRtfmAbortIfNot => new EX_AutoRtfmAbortIfNot(),
-            EExprToken.EX_Placeholder1 when Versions.Game == EGame.GAME_WutheringWaves => new EX_WuWaInstr1(this),
-            EExprToken.EX_Placeholder1 when Versions.Game == EGame.GAME_DeltaForceHawkOps => new EX_DFInstr(this),
-            EExprToken.EX_Placeholder2 when Versions.Game == EGame.GAME_WutheringWaves => new EX_WuWaInstr2(this),
+
+            EExprToken.EX_6E when Versions.Game == EGame.GAME_WutheringWaves => new EX_WuWaInstr1(this),
+            EExprToken.EX_6F when Versions.Game == EGame.GAME_WutheringWaves => new EX_WuWaInstr2(this),
+            EExprToken.EX_6E when Versions.Game == EGame.GAME_DeltaForceHawkOps => new EX_DFInstr(this),
+            EExprToken.EX_FD when Versions.Game == EGame.GAME_2XKO => new EX_FixedPointConst(this),
+            EExprToken.EX_F9 when Versions.Game == EGame.GAME_Borderlands4 => new EX_DamageSourceContainer(this),
+            EExprToken.EX_FD when Versions.Game == EGame.GAME_Borderlands4 => new EX_GbxDefPtr(this),
+            EExprToken.EX_FE when Versions.Game == EGame.GAME_Borderlands4 => new EX_GameDataHandle(this),
+
             _ => throw new ParserException($"Unknown EExprToken {token}")
         };
         expression.StatementIndex = index;
@@ -167,7 +177,7 @@ public class FKismetArchive : FArchive
     public KismetExpression[] ReadExpressionArray(EExprToken endToken)
     {
         var newData = new List<KismetExpression>();
-        KismetExpression currExpression = null;
+        KismetExpression? currExpression = null;
         while (currExpression == null || currExpression.Token != endToken)
         {
             if (currExpression != null) newData.Add(currExpression);
@@ -181,7 +191,11 @@ public class FKismetArchive : FArchive
     public override FName ReadFName()
     {
         var nameIndex = Read<int>();
-        var extraIndex = Read<int>();
+        var extraIndex = 0;
+        if (Ver >= EUnrealEngineObjectUE3Version.FNAME_CHANGE_NAME_SPLIT)
+        {
+            extraIndex = Read<int>();
+        }
         Index += 4;
 #if !NO_FNAME_VALIDATION
         if (nameIndex < 0 || nameIndex >= Owner.NameMap.Length)

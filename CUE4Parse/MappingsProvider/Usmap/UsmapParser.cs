@@ -21,11 +21,11 @@ public class UsmapParser
     public readonly FCustomVersionContainer CustomVersions;
     public readonly uint NetCL;
 
-    public UsmapParser(string path, string name = "An unnamed usmap") : this(File.OpenRead(path), name) { }
-    public UsmapParser(Stream data, string name = "An unnamed usmap") : this(new FStreamArchive(name, data)) { }
-    public UsmapParser(byte[] data, string name = "An unnamed usmap") : this(new FByteArchive(name, data)) { }
+    public UsmapParser(string path, string name = "An unnamed usmap", StringComparer? comparer = null) : this(File.OpenRead(path), name, comparer) { }
+    public UsmapParser(Stream data, string name = "An unnamed usmap", StringComparer? comparer = null) : this(new FStreamArchive(name, data), comparer) { }
+    public UsmapParser(byte[] data, string name = "An unnamed usmap", StringComparer? comparer = null) : this(new FByteArchive(name, data), comparer) { }
 
-    public UsmapParser(FArchive archive)
+    public UsmapParser(FArchive archive, StringComparer? comparer = null)
     {
         var magic = archive.Read<ushort>();
         if (magic != FileMagic)
@@ -40,7 +40,7 @@ public class UsmapParser
         var bHasVersioning = Ar.Version >= EUsmapVersion.PackageVersioning && Ar.ReadBoolean();
         if (bHasVersioning)
         {
-            PackageVersion = Ar.Read<FPackageFileVersion>();
+            PackageVersion = new FPackageFileVersion(Ar.Read<int>(), Ar.Read<int>());
             CustomVersions = new FCustomVersionContainer(Ar);
             NetCL = Ar.Read<uint>();
         }
@@ -97,17 +97,30 @@ public class UsmapParser
         }
 
         var enumCount = Ar.Read<uint>();
-        var enums = new Dictionary<string, Dictionary<int, string>>((int) enumCount);
+        var enums = new Dictionary<string, Dictionary<long, string>>((int) enumCount);
         for (var i = 0; i < enumCount; i++)
         {
             var enumName = Ar.ReadName(nameLut)!;
 
             var enumNamesSize = Ar.Version >= EUsmapVersion.LargeEnums ? Ar.Read<ushort>() : Ar.Read<byte>();
-            var enumNames = new Dictionary<int, string>(enumNamesSize);
-            for (var j = 0; j < enumNamesSize; j++)
+            var enumNames = new Dictionary<long, string>(enumNamesSize);
+
+            if (Ar.Version >= EUsmapVersion.ExplicitEnumValues)
             {
-                var value = Ar.ReadName(nameLut)!;
-                enumNames[j] = value;
+                for (var j = 0; j < enumNamesSize; j++)
+                {
+                    var value = Ar.Read<ulong>();
+                    var name = Ar.ReadName(nameLut)!;
+                    enumNames[(int)value] = name;
+                }
+            }
+            else
+            {
+                for (var j = 0; j < enumNamesSize; j++)
+                {
+                    var value = Ar.ReadName(nameLut)!;
+                    enumNames[j] = value;
+                }
             }
 
             // Some companies man... Their duplicated enums, even with different values, have to be ignored.
@@ -115,7 +128,7 @@ public class UsmapParser
         }
 
         var structCount = Ar.Read<uint>();
-        var structs = new Dictionary<string, Struct>(StringComparer.OrdinalIgnoreCase);
+        var structs = new Dictionary<string, Struct>(comparer ?? StringComparer.OrdinalIgnoreCase);
 
         var mappings = new TypeMappings(structs, enums);
 

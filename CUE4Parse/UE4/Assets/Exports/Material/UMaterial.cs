@@ -9,6 +9,7 @@ using CUE4Parse.UE4.Objects.Engine;
 using CUE4Parse.UE4.Objects.UObject;
 using CUE4Parse.UE4.Versions;
 using Newtonsoft.Json;
+using Serilog;
 
 namespace CUE4Parse.UE4.Assets.Exports.Material;
 
@@ -23,12 +24,14 @@ public class UMaterial : UMaterialInterface
     public EMaterialShadingModel ShadingModel { get; private set; } = EMaterialShadingModel.MSM_Unlit;
     public float OpacityMaskClipValue { get; private set; } = 0.333f;
     public List<UTexture> ReferencedTextures { get; } = [];
+    public bool bForceNaniteUsage;
 
     private readonly List<IObject> _displayedReferencedTextures = [];
     private bool _shouldDisplay;
 
     public override void Deserialize(FAssetArchive Ar, long validPos)
     {
+        if (Ar.Game == EGame.GAME_WorldofJadeDynasty) Ar.Position += 16;
         base.Deserialize(Ar, validPos);
         TwoSided = GetOrDefault<bool>(nameof(TwoSided));
         bDisableDepthTest = GetOrDefault<bool>(nameof(bDisableDepthTest));
@@ -40,13 +43,13 @@ public class UMaterial : UMaterialInterface
         OpacityMaskClipValue = GetOrDefault(nameof(OpacityMaskClipValue), OpacityMaskClipValue);
 
         // 4.25+
-        if (Ar.Game >= EGame.GAME_UE4_25)
+        if (Ar.Game >= EGame.GAME_UE4_25 || Ar.Game < EGame.GAME_UE4_0)
         {
             CachedExpressionData ??= GetOrDefault<FStructFallback>(nameof(CachedExpressionData));
             if (CachedExpressionData != null && CachedExpressionData.TryGetValue(out UTexture[] referencedTextures, "ReferencedTextures"))
                 ReferencedTextures.AddRange(referencedTextures);
 
-            if (TryGetValue(out referencedTextures, "ReferencedTextures")) // is this a thing ?
+            if (TryGetValue(out referencedTextures, "ReferencedTextures"))
                 ReferencedTextures.AddRange(referencedTextures);
         }
 
@@ -59,13 +62,37 @@ public class UMaterial : UMaterialInterface
         {
             if (Ar is { Game: >= EGame.GAME_UE4_25, Owner.Provider.ReadShaderMaps: true })
             {
+                var saved = Ar.Position;
                 try
                 {
                     DeserializeInlineShaderMaps(Ar, LoadedMaterialResources);
+                    if (!Ar.IsFilterEditorOnly)
+                    {
+                        bool bLocalSavedCachedExpressionData_DEPRECATED = false;
+                        if (FUE5MainStreamObjectVersion.Get(Ar) >= FUE5MainStreamObjectVersion.Type.MaterialSavedCachedData &&
+                            FUE5ReleaseStreamObjectVersion.Get(Ar) < FUE5ReleaseStreamObjectVersion.Type.MaterialInterfaceSavedCachedData)
+                        {
+                            bLocalSavedCachedExpressionData_DEPRECATED = Ar.ReadBoolean();
+                        }
+                        var bSavedCachedExpressionData_DEPRECATED = GetOrDefault("bSavedCachedExpressionData_DEPRECATED", false);
+                        if (bSavedCachedExpressionData_DEPRECATED)
+                        {
+                            bSavedCachedExpressionData_DEPRECATED = false;
+                            bLocalSavedCachedExpressionData_DEPRECATED = true;
+                        }
+
+                        if (bLocalSavedCachedExpressionData_DEPRECATED)
+                        {
+                            CachedExpressionData = new FStructFallback(Ar, "MaterialCachedExpressionData");
+                        }
+                    }
+                    if (FRenderingObjectVersion.Get(Ar) >= FRenderingObjectVersion.Type.NaniteForceMaterialUsage)
+                        bForceNaniteUsage = Ar.ReadBoolean();
                 }
-                finally
+                catch (Exception e)
                 {
-                    Ar.Position = validPos;
+                    Log.Error(e, "Failed to deserialize inline shader maps.");
+                    Ar.Position = saved;
                 }
             }
             else
@@ -76,7 +103,7 @@ public class UMaterial : UMaterialInterface
     }
 
     public UTexture? GetFirstTexture() => ReferencedTextures.Count > 0 ? ReferencedTextures[0] : null;
-    public UTexture? GetTextureAtIndex(int index) => ReferencedTextures.Count >= index ? ReferencedTextures[index] : null;
+    public UTexture? GetTextureAtIndex(int index) => ReferencedTextures.Count > index ? ReferencedTextures[index] : null;
 
     private void ScanForTextures(FAssetArchive Ar)
     {

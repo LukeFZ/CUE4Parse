@@ -1,4 +1,5 @@
 using System;
+using System.Buffers.Binary;
 using CUE4Parse.UE4.Assets.Exports.Component.Landscape;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Readers;
@@ -35,6 +36,12 @@ public class FTexture2DMipMap
             SizeY = Ar.Read<ushort>();
             SizeZ = Ar.Read<ushort>();
         }
+        else if (Ar.Game == EGame.GAME_WorldofJadeDynasty)
+        {
+            SizeX = (int)(Ar.Read<uint>() ^ 0xa537ea93);
+            SizeY = Ar.Read<int>();
+            SizeZ = BinaryPrimitives.ReverseEndianness(Ar.Read<int>());
+        }
         else
         {
             SizeX = Ar.Read<int>();
@@ -44,7 +51,9 @@ public class FTexture2DMipMap
 
         if (Ar.Ver >= EUnrealEngineObjectUE4Version.TEXTURE_DERIVED_DATA2 && !cooked)
         {
-            var derivedDataKey = Ar.ReadFString();
+            var FileRegionType = Ar.Game >= EGame.GAME_UE4_26 ? Ar.Read<byte>() : 0;
+            var derivedDataKey = Ar.Game < EGame.GAME_UE5_0 ? Ar.ReadFString() : "";
+            var bPagedToDerivedData = Ar.Game >= EGame.GAME_UE5_0 ? Ar.ReadBoolean() : false;
         }
     }
 

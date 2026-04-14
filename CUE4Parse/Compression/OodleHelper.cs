@@ -1,9 +1,10 @@
 using System;
 using System.IO;
 using System.IO.Compression;
-using System.Net;
 using System.Net.Http;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 
 using CUE4Parse.UE4.Exceptions;
@@ -24,39 +25,39 @@ public class OodleException : ParserException
 
 public static class OodleHelper
 {
-    private const string WARFRAME_CONTENT_HOST = "https://content.warframe.com";
-    private const string WARFRAME_ORIGIN_HOST = "https://origin.warframe.com";
-    private const string WARFRAME_INDEX_PATH = "/origin/50F7040A/index.txt.lzma";
-    private const string WARFRAME_INDEX_URL = WARFRAME_ORIGIN_HOST + WARFRAME_INDEX_PATH;
-    public const string OODLE_DLL_NAME = "oo2core_9_win64.dll";
+    public const string OODLE_NAME_OLD = "oo2core_9_win64.dll";
+    public const string OODLE_NAME_CURRENT = "oodle-data-shared.dll";
+    public const string OODLE_NAME_LINUX = "liboodle-data-shared.so";
 
+    private const string RELEASE_URL = "https://github.com/WorkingRobot/OodleUE/releases/download/2026-01-25-1223";
+    private const string WINDOWS_ZIP = "clang-cl-x64-release.zip";
+    private const string LINUX_ZIP = "gcc-x64-release.zip";
+
+    public static string OodleFileName => OperatingSystem.IsLinux() ? OODLE_NAME_LINUX : OODLE_NAME_CURRENT;
     public static Oodle? Instance { get; private set; }
 
-    public static void Initialize()
+    public static void Initialize(string? path = null) =>
+        InitializeAsync(path).GetAwaiter().GetResult();
+
+    public static async Task InitializeAsync(string? path = null, CancellationToken cancellationToken = default)
     {
         if (Instance is not null) return;
-        if (CUE4ParseNatives.IsFeatureAvailable("Oodle")) {
-        
-            Instance = new Oodle(NativeLibrary.Load(CUE4ParseNatives.LibraryName));
-        }
-        else
-        {
-            if (DownloadOodleDll())
-            {
-                Instance = new Oodle(OODLE_DLL_NAME);
-            }
-            else
-            {
-                Log.Warning("Oodle decompression failed: unable to download oodle dll");
-            }   
-        }
-    }
 
-    public static void Initialize(string path)
-    {
-        Instance?.Dispose();
-        if (File.Exists(path))
-            Instance = new Oodle(path);
+        if (path is null && CUE4ParseNatives.IsFeatureAvailable("Oodle\0"u8))
+        {
+            Initialize(new Oodle(NativeLibrary.Load(CUE4ParseNatives.LibraryName)));
+            return;
+        }
+
+        var oodlePath = path;
+        if (await DownloadOodleDllAsync(ref oodlePath, cancellationToken).ConfigureAwait(false) &&
+            !string.IsNullOrWhiteSpace(oodlePath))
+        {
+            Initialize(new Oodle(oodlePath));
+            return;
+        }
+
+        Log.Warning("Oodle decompression failed: unable to download oodle dll");
     }
 
     public static void Initialize(Oodle instance)
@@ -65,30 +66,29 @@ public static class OodleHelper
         Instance = instance;
     }
 
-    public static bool DownloadOodleDll(string? path = null)
-    {
-        if (File.Exists(path ?? OODLE_DLL_NAME)) return true;
-        return DownloadOodleDllAsync(path).GetAwaiter().GetResult();
-    }
+    public static bool DownloadOodleDll() =>
+        DownloadOodleDllAsync().GetAwaiter().GetResult();
 
-    public static void Decompress(byte[] compressed, int compressedOffset, int compressedSize,
-        byte[] uncompressed, int uncompressedOffset, int uncompressedSize, FArchive? reader = null)
+    public static bool DownloadOodleDll(ref string? path) =>
+        DownloadOodleDllAsync(ref path).GetAwaiter().GetResult();
+
+    public static void Decompress(
+        byte[] compressed,   int compressedOffset,   int compressedSize,
+        byte[] uncompressed, int uncompressedOffset, int uncompressedSize,
+        FArchive? reader = null)
     {
-        if (Instance is null)
+        var instance = Instance;
+        if (instance is null)
         {
-            const string message = "Oodle decompression failed: not initialized";
-            if (reader is not null) throw new OodleException(reader, message);
-            throw new OodleException(message);
+            ThrowDecompressionException(reader, "Oodle decompression failed: not initialized");
         }
 
-        var decodedSize = Instance.Decompress(compressed.AsSpan(compressedOffset, compressedSize),
+        var decodedSize = instance.Decompress(compressed.AsSpan(compressedOffset, compressedSize),
             uncompressed.AsSpan(uncompressedOffset, uncompressedSize));
 
         if (decodedSize <= 0)
         {
-            var message = $"Oodle decompression failed with result {decodedSize}";
-            if (reader is not null) throw new OodleException(reader, message);
-            throw new OodleException(message);
+            ThrowDecompressionException(reader, $"Oodle decompression failed with result {decodedSize}");
         }
 
         if (decodedSize < uncompressedSize)
@@ -98,95 +98,66 @@ public static class OodleHelper
         }
     }
 
-    public static async Task<bool> DownloadOodleDllAsync(string? path)
+    public static Task<bool> DownloadOodleDllAsync(CancellationToken cancellationToken = default)
     {
-        path ??= OODLE_DLL_NAME;
-
-        using var client = new HttpClient(new SocketsHttpHandler
-        {
-            UseProxy = false,
-            UseCookies = false,
-            AutomaticDecompression = DecompressionMethods.All
-        });
-        client.Timeout = TimeSpan.FromSeconds(20);
-
-        try
-        {
-            using var indexResponse = await client.GetAsync(WARFRAME_INDEX_URL).ConfigureAwait(false);
-            indexResponse.EnsureSuccessStatusCode();
-            await using var indexLzmaStream = await indexResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            var indexStream = new MemoryStream();
-
-            Lzma.Decompress(indexLzmaStream, indexStream);
-            indexStream.Position = 0;
-
-            string? dllUrl = null;
-            using var indexReader = new StreamReader(indexStream);
-            while (!indexReader.EndOfStream)
-            {
-                var line = await indexReader.ReadLineAsync().ConfigureAwait(false);
-                if (string.IsNullOrEmpty(line)) continue;
-
-                if (line.Contains(OODLE_DLL_NAME))
-                {
-                    dllUrl = WARFRAME_CONTENT_HOST + line[..line.IndexOf(',')];
-                    break;
-                }
-            }
-
-            if (dllUrl == null)
-            {
-                Log.Warning("Warframe index did not contain oodle dll");
-                return false;
-            }
-
-            using var dllResponse = await client.GetAsync(dllUrl).ConfigureAwait(false);
-            var dllStream = new MemoryStream();
-            await using var dllLzmaStream = await dllResponse.Content.ReadAsStreamAsync().ConfigureAwait(false);
-            Lzma.Decompress(dllLzmaStream, dllStream);
-            dllStream.Position = 0;
-
-            {
-                await using var dllFs = File.Create(path);
-                await dllStream.CopyToAsync(dllFs).ConfigureAwait(false);
-            }
-
-            Log.Information($"Successfully downloaded oodle dll at \"{path}\"");
-            return true;
-        }
-        catch (Exception e)
-        {
-            Log.Warning(e, "Uncaught exception while downloading oodle dll");
-        }
-
-        Log.Information("Downloading oodle from alternative source");
-
-        var altResult = await DownloadOodleDllFromOodleUEAsync(client, path).ConfigureAwait(false);
-        return altResult;
+        string? path = null;
+        return DownloadOodleDllAsync(ref path, cancellationToken);
     }
 
-    public static async Task<bool> DownloadOodleDllFromOodleUEAsync(HttpClient client, string path)
+    public static Task<bool> DownloadOodleDllAsync(ref string? path, CancellationToken cancellationToken = default)
     {
-        const string url = "https://github.com/WorkingRobot/OodleUE/releases/download/2024-11-01-726/msvc.zip"; // 2.9.13
-        const string entryName = "bin/Release/oodle-data-shared.dll";
+        path = ResolvePath(path);
+        return File.Exists(path)
+            ? Task.FromResult(true)
+            : DownloadOodleDllFromOodleUEAsync(HttpUtils.DownloadClient, path, cancellationToken);
+    }
+
+    public static async Task<bool> DownloadOodleDllFromOodleUEAsync(HttpClient client, string path, CancellationToken cancellationToken = default)
+    {
+        var (url, entryName) = OperatingSystem.IsLinux()
+            ? ($"{RELEASE_URL}/{LINUX_ZIP}", $"lib/{OODLE_NAME_LINUX}")
+            : ($"{RELEASE_URL}/{WINDOWS_ZIP}", $"bin/{OODLE_NAME_CURRENT}");
 
         try
         {
-            using var response = await client.GetAsync(url).ConfigureAwait(false);
+            using var response = await client.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
             response.EnsureSuccessStatusCode();
-            await using var responseStream = await response.Content.ReadAsStreamAsync().ConfigureAwait(false);
+            await using var responseStream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
             using var zip = new ZipArchive(responseStream, ZipArchiveMode.Read);
             var entry = zip.GetEntry(entryName);
             ArgumentNullException.ThrowIfNull(entry, "oodle entry in zip not found");
             await using var entryStream = entry.Open();
             await using var fs = File.Create(path);
-            await entryStream.CopyToAsync(fs).ConfigureAwait(false);
+            await entryStream.CopyToAsync(fs, cancellationToken).ConfigureAwait(false);
+
+            if (OperatingSystem.IsLinux())
+            {
+                File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute |
+                                           UnixFileMode.GroupRead | UnixFileMode.GroupExecute |
+                                           UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+            }
+
             return true;
         }
         catch (Exception e)
         {
             Log.Warning(e, "Uncaught exception while downloading oodle dll from OodleUE");
         }
+
         return false;
+    }
+
+    private static string ResolvePath(string? path)
+    {
+        return !string.IsNullOrWhiteSpace(path)
+            ? path
+            : !OperatingSystem.IsLinux() && File.Exists(OODLE_NAME_OLD) ? OODLE_NAME_OLD : OodleFileName;
+    }
+
+    [DoesNotReturn]
+    private static void ThrowDecompressionException(FArchive? reader, string message)
+    {
+        if (reader is not null) throw new OodleException(reader, message);
+        throw new OodleException(message);
     }
 }

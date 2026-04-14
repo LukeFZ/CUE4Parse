@@ -20,6 +20,9 @@ using CUE4Parse.UE4.Assets.Exports.Texture;
 using CUE4Parse.UE4.Assets.Exports.Wwise;
 using CUE4Parse.UE4.Assets.Objects;
 using CUE4Parse.UE4.Assets.Objects.Properties;
+using CUE4Parse.UE4.CriWare.Readers;
+using CUE4Parse.UE4.FMod;
+using CUE4Parse.UE4.FMod.Objects;
 using CUE4Parse.UE4.Kismet;
 using CUE4Parse.UE4.Localization;
 using CUE4Parse.UE4.Objects.Core.i18N;
@@ -40,92 +43,11 @@ using CUE4Parse.UE4.Wwise;
 using CUE4Parse.UE4.Wwise.Objects;
 using CUE4Parse.UE4.Wwise.Objects.HIRC;
 using CUE4Parse.Utils;
+using Fmod5Sharp.FmodTypes;
 using Newtonsoft.Json;
 #pragma warning disable CS8765
 
 namespace CUE4Parse;
-
-public class DNAVersionConverter : JsonConverter<DNAVersion>
-{
-    public override void WriteJson(JsonWriter writer, DNAVersion value, JsonSerializer serializer)
-    {
-        writer.WriteStartObject();
-
-        writer.WritePropertyName("Generation");
-        serializer.Serialize(writer, value.Generation);
-
-        writer.WritePropertyName("Version");
-        serializer.Serialize(writer, value.Version);
-
-        writer.WritePropertyName("FileVersion");
-        serializer.Serialize(writer, $"FileVersion::{value.FileVersion.ToString()}");
-
-        writer.WriteEndObject();
-    }
-
-    public override DNAVersion ReadJson(JsonReader reader, Type objectType, DNAVersion existingValue,
-        bool hasExistingValue, JsonSerializer serializer)
-    {
-        throw new NotImplementedException();
-    }
-}
-
-public class RawDescriptorConverter : JsonConverter<RawDescriptor>
-{
-    public override void WriteJson(JsonWriter writer, RawDescriptor value, JsonSerializer serializer)
-    {
-        writer.WriteStartObject();
-
-        writer.WritePropertyName("Name");
-        serializer.Serialize(writer, value.Name);
-
-        writer.WritePropertyName("Archetype");
-        serializer.Serialize(writer, $"EArchetype::{value.Archetype}");
-
-        writer.WritePropertyName("Gender");
-        serializer.Serialize(writer, $"EGender::{value.Gender}");
-
-        writer.WritePropertyName("Age");
-        serializer.Serialize(writer, value.Age);
-
-        writer.WritePropertyName("Metadata");
-        writer.WriteStartArray();
-        foreach (var meta in value.Metadata)
-        {
-            serializer.Serialize(writer, meta);
-        }
-        writer.WriteEndArray();
-
-        writer.WritePropertyName("TranslationUnit");
-        serializer.Serialize(writer, $"ETranslationUnit::{value.TranslationUnit}");
-
-        writer.WritePropertyName("RotationUnit");
-        serializer.Serialize(writer, $"ERotationUnit::{value.RotationUnit}");
-
-        writer.WritePropertyName("CoordinateSystem");
-        serializer.Serialize(writer, value.CoordinateSystem);
-
-        writer.WritePropertyName("LODCount");
-        serializer.Serialize(writer, value.LODCount);
-
-        writer.WritePropertyName("MaxLOD");
-        serializer.Serialize(writer, value.MaxLOD);
-
-        writer.WritePropertyName("Complexity");
-        serializer.Serialize(writer, value.Complexity);
-
-        writer.WritePropertyName("DBName");
-        serializer.Serialize(writer, value.DBName);
-
-        writer.WriteEndObject();
-    }
-
-    public override RawDescriptor ReadJson(JsonReader reader, Type objectType, RawDescriptor existingValue, bool hasExistingValue,
-        JsonSerializer serializer)
-    {
-        throw new NotImplementedException();
-    }
-}
 
 public class FTextConverter : JsonConverter<FText>
 {
@@ -508,15 +430,7 @@ public class DelegatePropertyConverter : JsonConverter<DelegateProperty>
 {
     public override void WriteJson(JsonWriter writer, DelegateProperty value, JsonSerializer serializer)
     {
-        writer.WriteStartObject();
-
-        writer.WritePropertyName("Num");
-        writer.WriteValue(value.Num);
-
-        writer.WritePropertyName("Name");
         serializer.Serialize(writer, value.Value);
-
-        writer.WriteEndObject();
     }
 
     public override DelegateProperty ReadJson(JsonReader reader, Type objectType, DelegateProperty existingValue, bool hasExistingValue,
@@ -911,6 +825,11 @@ public class UObjectConverter : JsonConverter<UObject>
     {
         writer.WriteStartObject();
         value.WriteJson(writer, serializer);
+        if (value.CustomGameData is not null)
+        {
+            writer.WritePropertyName(nameof(value.CustomGameData));
+            serializer.Serialize(writer, value.CustomGameData);
+        }
         writer.WriteEndObject();
     }
 
@@ -964,7 +883,7 @@ public class FPackageFileSummaryConverter : JsonConverter<FPackageFileSummary>
         writer.WriteValue(value.FileVersionLicenseeUE.ToStringBitfield());
 
         writer.WritePropertyName("CustomVersions");
-        serializer.Serialize(writer, value.CustomVersionContainer.Versions);
+        serializer.Serialize(writer, value.CustomVersionContainer?.Versions);
 
         writer.WritePropertyName(nameof(value.bUnversioned));
         writer.WriteValue(value.bUnversioned);
@@ -1228,26 +1147,17 @@ public class AkEntryConverter : JsonConverter<AkEntry>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("NameHash");
-        writer.WriteValue(value.NameHash);
+        writer.WritePropertyName(nameof(value.AudioPath));
+        writer.WriteValue(value.AudioPath);
 
-        writer.WritePropertyName("OffsetMultiplier");
+        writer.WritePropertyName(nameof(value.OffsetMultiplier));
         writer.WriteValue(value.OffsetMultiplier);
 
-        writer.WritePropertyName("Size");
+        writer.WritePropertyName(nameof(value.Size));
         writer.WriteValue(value.Size);
 
-        writer.WritePropertyName("Offset");
+        writer.WritePropertyName(nameof(value.Offset));
         writer.WriteValue(value.Offset);
-
-        writer.WritePropertyName("FolderId");
-        writer.WriteValue(value.FolderId);
-
-        writer.WritePropertyName("Path");
-        writer.WriteValue(value.Path);
-
-        writer.WritePropertyName("IsSoundBank");
-        writer.WriteValue(value.IsSoundBank);
 
         writer.WriteEndObject();
     }
@@ -1265,17 +1175,14 @@ public class AkFolderConverter : JsonConverter<AkFolder>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("Offset");
+        writer.WritePropertyName(nameof(value.Offset));
         writer.WriteValue(value.Offset);
 
-        writer.WritePropertyName("Id");
+        writer.WritePropertyName(nameof(value.Id));
         writer.WriteValue(value.Id);
 
-        writer.WritePropertyName("Name");
+        writer.WritePropertyName(nameof(value.Name));
         writer.WriteValue(value.Name);
-
-        writer.WritePropertyName("Entries");
-        serializer.Serialize(writer, value.Entries);
 
         writer.WriteEndObject();
     }
@@ -1384,29 +1291,68 @@ public class WwiseConverter : JsonConverter<WwiseReader>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("Header");
+        writer.WritePropertyName(nameof(value.Header));
         serializer.Serialize(writer, value.Header);
 
-        writer.WritePropertyName("Folders");
-        serializer.Serialize(writer, value.Folders);
+        if (value.AKPKBankEntries is { Count: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.AKPKBankEntries));
+            serializer.Serialize(writer, value.AKPKBankEntries);
+        }
 
-        writer.WritePropertyName("Initialization");
-        serializer.Serialize(writer, value.Initialization);
+        if (value.AKPKWemEntries is { Count: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.AKPKWemEntries));
+            serializer.Serialize(writer, value.AKPKWemEntries);
+        }
 
-        writer.WritePropertyName("WemIndexes");
-        serializer.Serialize(writer, value.WemIndexes);
+        if (value.AKPluginList is { Count: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.AKPluginList));
+            serializer.Serialize(writer, value.AKPluginList);
+        }
 
-        writer.WritePropertyName("Hierarchies");
-        serializer.Serialize(writer, value.Hierarchies);
+        if (value.WemIndexes is { Length: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.WemIndexes));
+            serializer.Serialize(writer, value.WemIndexes);
+        }
 
-        writer.WritePropertyName("EnvSettings");
-        serializer.Serialize(writer, value.EnvSettings);
+        if (value.Hierarchies is { Length: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.Hierarchies));
+            serializer.Serialize(writer, value.Hierarchies);
+        }
 
-        writer.WritePropertyName("IdToString");
-        serializer.Serialize(writer, value.IdToString);
+        if (value.EnvSettings is not null)
+        {
+            writer.WritePropertyName(nameof(value.EnvSettings));
+            serializer.Serialize(writer, value.EnvSettings);
+        }
 
-        writer.WritePropertyName("Platform");
-        writer.WriteValue(value.Platform);
+        if (value.BankIDToFileName is { Count: > 0 })
+        {
+            writer.WritePropertyName(nameof(value.BankIDToFileName));
+            serializer.Serialize(writer, value.BankIDToFileName);
+        }
+
+        if (!string.IsNullOrEmpty(value.Platform))
+        {
+            writer.WritePropertyName(nameof(value.Platform));
+            writer.WriteValue(value.Platform);
+        }
+
+        if (value.GlobalSettings is not null)
+        {
+            writer.WritePropertyName(nameof(value.GlobalSettings));
+            value.GlobalSettings.WriteJson(writer, serializer);
+        }
+
+        if (value.WemFile?.IsValid is true)
+        {
+            writer.WritePropertyName("IsWemFile");
+            writer.WriteValue(true);
+        }
 
         writer.WriteEndObject();
     }
@@ -2174,6 +2120,12 @@ public class FStaticMeshSectionConverter : JsonConverter<FStaticMeshSection>
         writer.WritePropertyName("bVisibleInRayTracing");
         writer.WriteValue(value.bVisibleInRayTracing);
 
+        if (value.CustomData.HasValue)
+        {
+            writer.WritePropertyName("CustomData");
+            writer.WriteValue(value.CustomData.Value);
+        }
+
         writer.WriteEndObject();
     }
 
@@ -2348,7 +2300,18 @@ public class FInstancedStructConverter : JsonConverter<FInstancedStruct>
 {
     public override void WriteJson(JsonWriter writer, FInstancedStruct? value, JsonSerializer serializer)
     {
-        serializer.Serialize(writer, value?.NonConstStruct);
+        if (value?.StringData != null)
+        {
+            writer.WriteStartObject();
+
+            writer.WritePropertyName(nameof(value.StringData));
+            serializer.Serialize(writer, value.StringData);
+
+            writer.WriteEndObject();
+            return;
+        }
+
+        serializer.Serialize(writer, value?.NonConstIUSturct);
     }
 
     public override FInstancedStruct ReadJson(JsonReader reader, Type objectType, FInstancedStruct? existingValue, bool hasExistingValue, JsonSerializer serializer)
@@ -2595,6 +2558,9 @@ public class FTextLocalizationMetaDataResourceConverter : JsonConverter<FTextLoc
         writer.WritePropertyName("CompiledCultures");
         serializer.Serialize(writer, value.CompiledCultures);
 
+        writer.WritePropertyName("bIsUGC");
+        writer.WriteValue(value.bIsUGC);
+
         writer.WriteEndObject();
     }
 
@@ -2731,44 +2697,23 @@ public class FDependsNodeConverter : JsonConverter<FDependsNode>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("Identifier");
+        writer.WritePropertyName(nameof(value.Identifier));
         serializer.Serialize(writer, value.Identifier);
+        writer.WritePropertyName(nameof(value.PackageDependencies));
+        serializer.Serialize(writer, value.PackageDependencies);
+        writer.WritePropertyName(nameof(value.NameDependencies));
+        serializer.Serialize(writer, value.NameDependencies);
+        writer.WritePropertyName(nameof(value.ManageDependencies));
+        serializer.Serialize(writer, value.ManageDependencies);
+        writer.WritePropertyName(nameof(value.Referencers));
+        serializer.Serialize(writer, value.Referencers);
 
-        WriteDependsNodeList("PackageDependencies", writer, value.PackageDependencies);
-        WriteDependsNodeList("NameDependencies", writer, value.NameDependencies);
-        WriteDependsNodeList("ManageDependencies", writer, value.ManageDependencies);
-        WriteDependsNodeList("Referencers", writer, value.Referencers);
-
-        if (value.PackageFlags != null)
-        {
-            writer.WritePropertyName("PackageFlags");
-            serializer.Serialize(writer, value.PackageFlags);
-        }
-
-        if (value.ManageFlags != null)
-        {
-            writer.WritePropertyName("ManageFlags");
-            serializer.Serialize(writer, value.ManageFlags);
-        }
+        writer.WritePropertyName(nameof(value.PackageFlags));
+        serializer.Serialize(writer, value.PackageFlags);
+        writer.WritePropertyName(nameof(value.ManageFlags));
+        serializer.Serialize(writer, value.ManageFlags);
 
         writer.WriteEndObject();
-    }
-
-    /** Custom serializer to avoid circular reference */
-    private static void WriteDependsNodeList(string name, JsonWriter writer, List<FDependsNode>? dependsNodeList)
-    {
-        if (dependsNodeList == null || dependsNodeList.Count == 0)
-        {
-            return;
-        }
-
-        writer.WritePropertyName(name);
-        writer.WriteStartArray();
-        foreach (var dependsNode in dependsNodeList)
-        {
-            writer.WriteValue(dependsNode._index);
-        }
-        writer.WriteEndArray();
     }
 
     public override FDependsNode ReadJson(JsonReader reader, Type objectType, FDependsNode existingValue, bool hasExistingValue,
@@ -2798,43 +2743,43 @@ public class FAssetDataConverter : JsonConverter<FAssetData>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("ObjectPath");
-        serializer.Serialize(writer, value.ObjectPath);
+        writer.WritePropertyName(nameof(value.ObjectPath));
+        writer.WriteValue(value.ObjectPath);
 
-        writer.WritePropertyName("PackageName");
-        serializer.Serialize(writer, value.PackageName);
+        writer.WritePropertyName(nameof(value.PackageName));
+        writer.WriteValue(value.PackageName.Text);
 
-        writer.WritePropertyName("PackagePath");
-        serializer.Serialize(writer, value.PackagePath);
+        writer.WritePropertyName(nameof(value.PackagePath));
+        writer.WriteValue(value.PackagePath.Text);
 
-        writer.WritePropertyName("AssetName");
-        serializer.Serialize(writer, value.AssetName);
+        writer.WritePropertyName(nameof(value.AssetName));
+        writer.WriteValue(value.AssetName.Text);
 
-        writer.WritePropertyName("AssetClass");
-        serializer.Serialize(writer, value.AssetClass);
+        writer.WritePropertyName(nameof(value.AssetClass));
+        writer.WriteValue(value.AssetClass.Text);
 
         if (value.TagsAndValues.Count > 0)
         {
-            writer.WritePropertyName("TagsAndValues");
+            writer.WritePropertyName(nameof(value.TagsAndValues));
             serializer.Serialize(writer, value.TagsAndValues);
         }
 
         if (value.TaggedAssetBundles.Bundles.Length > 0)
         {
-            writer.WritePropertyName("TaggedAssetBundles");
+            writer.WritePropertyName(nameof(value.TaggedAssetBundles));
             serializer.Serialize(writer, value.TaggedAssetBundles);
         }
 
         if (value.ChunkIDs.Length > 0)
         {
-            writer.WritePropertyName("ChunkIDs");
+            writer.WritePropertyName(nameof(value.ChunkIDs));
             serializer.Serialize(writer, value.ChunkIDs);
         }
 
         if (value.PackageFlags != 0)
         {
-            writer.WritePropertyName("PackageFlags");
-            serializer.Serialize(writer, value.PackageFlags);
+            writer.WritePropertyName(nameof(value.PackageFlags));
+            writer.WriteValue(value.PackageFlags.ToStringBitfield());
         }
 
         writer.WriteEndObject();
@@ -3023,13 +2968,13 @@ public class FAssetRegistryStateConverter : JsonConverter<FAssetRegistryState>
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("PreallocatedAssetDataBuffers");
+        writer.WritePropertyName(nameof(value.PreallocatedAssetDataBuffers));
         serializer.Serialize(writer, value.PreallocatedAssetDataBuffers);
 
-        writer.WritePropertyName("PreallocatedDependsNodeDataBuffers");
+        writer.WritePropertyName(nameof(value.PreallocatedDependsNodeDataBuffers));
         serializer.Serialize(writer, value.PreallocatedDependsNodeDataBuffers);
 
-        writer.WritePropertyName("PreallocatedPackageDataBuffers");
+        writer.WritePropertyName(nameof(value.PreallocatedPackageDataBuffers));
         serializer.Serialize(writer, value.PreallocatedPackageDataBuffers);
 
         writer.WriteEndObject();
@@ -3102,7 +3047,8 @@ public class EnumConverter<T> : JsonConverter<T> where T : Enum
 {
     public override void WriteJson(JsonWriter writer, T value, JsonSerializer serializer)
     {
-        serializer.Serialize(writer, value.ToStringBitfield(true));
+        var type = value.GetType();
+        writer.WriteValue(type.IsDefined(typeof(FlagsAttribute), inherit: false) ? value.ToStringBitfield(true) : $"{type.Name}::{value}");
     }
 
     public override T ReadJson(JsonReader reader, Type objectType, T existingValue, bool hasExistingValue,
@@ -3118,7 +3064,7 @@ public class FWwiseLocalizedEventCookedDataConverter : JsonConverter<FWwiseLocal
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("EventLanguageMap");
+        writer.WritePropertyName(nameof(value.EventLanguageMap));
         writer.WriteStartArray();
         foreach (var (language, data) in value.EventLanguageMap)
         {
@@ -3133,16 +3079,90 @@ public class FWwiseLocalizedEventCookedDataConverter : JsonConverter<FWwiseLocal
         }
         writer.WriteEndArray();
 
-        writer.WritePropertyName("DebugName");
+        writer.WritePropertyName(nameof(value.DebugName));
         serializer.Serialize(writer, value.DebugName);
 
-        writer.WritePropertyName("EventId");
+        writer.WritePropertyName(nameof(value.EventId));
         writer.WriteValue(value.EventId);
 
         writer.WriteEndObject();
     }
 
     public override FWwiseLocalizedEventCookedData ReadJson(JsonReader reader, Type objectType, FWwiseLocalizedEventCookedData existingValue, bool hasExistingValue,
+        JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FWwiseLocalizedAuxBusCookedDataConverter : JsonConverter<FWwiseLocalizedAuxBusCookedData>
+{
+    public override void WriteJson(JsonWriter writer, FWwiseLocalizedAuxBusCookedData value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.AuxBusLanguageMap));
+        writer.WriteStartArray();
+        foreach (var (language, data) in value.AuxBusLanguageMap)
+        {
+            writer.WriteStartObject();
+
+            writer.WritePropertyName("Key");
+            serializer.Serialize(writer, language);
+            writer.WritePropertyName("Value");
+            serializer.Serialize(writer, data);
+
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName(nameof(value.DebugName));
+        serializer.Serialize(writer, value.DebugName);
+
+        writer.WritePropertyName(nameof(value.AuxBusId));
+        writer.WriteValue(value.AuxBusId);
+
+        writer.WriteEndObject();
+    }
+
+    public override FWwiseLocalizedAuxBusCookedData ReadJson(JsonReader reader, Type objectType, FWwiseLocalizedAuxBusCookedData existingValue, bool hasExistingValue,
+        JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FWwiseLocalizedShareSetCookedDataConverter : JsonConverter<FWwiseLocalizedShareSetCookedData>
+{
+    public override void WriteJson(JsonWriter writer, FWwiseLocalizedShareSetCookedData value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.ShareSetLanguageMap));
+        writer.WriteStartArray();
+        foreach (var (language, data) in value.ShareSetLanguageMap)
+        {
+            writer.WriteStartObject();
+
+            writer.WritePropertyName("Key");
+            serializer.Serialize(writer, language);
+            writer.WritePropertyName("Value");
+            serializer.Serialize(writer, data);
+
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName(nameof(value.DebugName));
+        serializer.Serialize(writer, value.DebugName);
+
+        writer.WritePropertyName(nameof(value.ShareSetId));
+        writer.WriteValue(value.ShareSetId);
+
+        writer.WriteEndObject();
+    }
+
+    public override FWwiseLocalizedShareSetCookedData ReadJson(JsonReader reader, Type objectType, FWwiseLocalizedShareSetCookedData existingValue, bool hasExistingValue,
         JsonSerializer serializer)
     {
         throw new NotImplementedException();
@@ -3187,41 +3207,295 @@ public class FWwiseLocalizedSoundBankCookedDataConverter : JsonConverter<FWwiseL
         => throw new NotImplementedException("Deserialization not implemented");
 }
 
-public class BankHeaderConverter : JsonConverter<BankHeader>
+public class BankHeaderConverter : JsonConverter<AkBankHeader>
 {
-    public override void WriteJson(JsonWriter writer, BankHeader value, JsonSerializer serializer)
+    public override void WriteJson(JsonWriter writer, AkBankHeader value, JsonSerializer serializer)
     {
         writer.WriteStartObject();
 
-        writer.WritePropertyName("Version");
+        writer.WritePropertyName(nameof(value.Version));
         writer.WriteValue(value.Version);
 
-        writer.WritePropertyName("SoundBankId");
+        writer.WritePropertyName(nameof(value.SoundBankId));
         writer.WriteValue(value.SoundBankId);
 
-        writer.WritePropertyName("LanguageId");
+        writer.WritePropertyName(nameof(value.LanguageId));
         writer.WriteValue(value.LanguageId);
 
-        writer.WritePropertyName("FeedbackInBank");
+        writer.WritePropertyName(nameof(value.FeedbackInBank));
         writer.WriteValue(value.FeedbackInBank);
 
-        writer.WritePropertyName("AltValues");
+        writer.WritePropertyName(nameof(value.AltValues));
         writer.WriteValue(value.AltValues.ToString());
 
-        writer.WritePropertyName("ProjectId");
+        writer.WritePropertyName(nameof(value.ProjectId));
         writer.WriteValue(value.ProjectId);
 
-        writer.WritePropertyName("SoundBankType");
-        writer.WriteValue(value.SoundBankType);
+        writer.WritePropertyName(nameof(value.SoundBankType));
+        writer.WriteValue(value.SoundBankType.ToString());
 
-        writer.WritePropertyName("BankHash");
+        writer.WritePropertyName(nameof(value.BankHash));
         writer.WriteValue(value.BankHash);
 
         writer.WriteEndObject();
     }
 
-    public override BankHeader ReadJson(JsonReader reader, Type objectType, BankHeader existingValue, bool hasExistingValue, JsonSerializer serializer)
+    public override AkBankHeader ReadJson(JsonReader reader, Type objectType, AkBankHeader existingValue, bool hasExistingValue, JsonSerializer serializer)
     {
         throw new NotImplementedException("Deserialization is not implemented.");
+    }
+}
+
+public class FWwisePackagedFileConverter : JsonConverter<FWwisePackagedFile>
+{
+    public override void WriteJson(JsonWriter writer, FWwisePackagedFile value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.Hash));
+        writer.WriteValue(value.Hash);
+
+        if (!value.PathName.IsNone)
+        {
+            writer.WritePropertyName(nameof(value.PathName));
+            writer.WriteValue(value.PathName.ToString());
+        }
+
+        if (!value.ModularGameplayName.IsNone)
+        {
+            writer.WritePropertyName(nameof(value.ModularGameplayName));
+            writer.WriteValue(value.ModularGameplayName.ToString());
+        }
+
+        writer.WritePropertyName(nameof(value.bStreaming));
+        writer.WriteValue(value.bStreaming);
+
+        if (value.BulkData != null)
+        {
+            writer.WritePropertyName(nameof(value.BulkData));
+            serializer.Serialize(writer, value.BulkData);
+        }
+
+        writer.WriteEndObject();
+    }
+
+    public override FWwisePackagedFile? ReadJson(JsonReader reader, Type objectType, FWwisePackagedFile? existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FModConverter : JsonConverter<FModReader>
+{
+    public override void WriteJson(JsonWriter writer, FModReader value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.BankName));
+        writer.WriteValue(value.BankName);
+
+        writer.WritePropertyName(nameof(value.BankInfo));
+        serializer.Serialize(writer, value.BankInfo);
+
+        writer.WritePropertyName(nameof(FModReader.FormatInfo));
+        serializer.Serialize(writer, FModReader.FormatInfo);
+
+        if (FModReader.SoundDataInfo is not null)
+        {
+            writer.WritePropertyName(nameof(FModReader.SoundDataInfo));
+            serializer.Serialize(writer, FModReader.SoundDataInfo);
+        }
+
+        if (FModReader.EncryptionKey is not null)
+        {
+            writer.WritePropertyName(nameof(FModReader.EncryptionKey));
+            serializer.Serialize(writer, FModReader.EncryptionKey);
+        }
+
+        if (value.StringTable?.RadixTree is { Guids: var guids } tree)
+        {
+            writer.WritePropertyName(nameof(value.StringTable));
+            var guidMap = new Dictionary<string, string>(guids.Length);
+            for (int i = 0; i < guids.Length; i++)
+            {
+                var guid = guids[i];
+                if (tree.TryGetStringByIndex(i, out var path))
+                {
+                    guidMap[guid.ToString()] = path;
+                }
+                else
+                {
+                    guidMap[guid.ToString()] = string.Empty;
+                }
+            }
+            serializer.Serialize(writer, guidMap);
+        }
+
+        if (value.SoundTable is not null)
+        {
+            writer.WritePropertyName(nameof(value.SoundTable));
+            serializer.Serialize(writer, value.SoundTable);
+        }
+
+        if (value.PlatformInfo is not null)
+        {
+            writer.WritePropertyName(nameof(value.PlatformInfo));
+            serializer.Serialize(writer, value.PlatformInfo);
+        }
+
+        writer.WritePropertyName(nameof(value.HashData));
+        serializer.Serialize(writer, value.HashData);
+
+        writer.WritePropertyName(nameof(value.SoundBankData));
+        writer.WriteStartArray();
+        foreach (var bank in value.SoundBankData)
+        {
+            serializer.Serialize(writer, bank, typeof(FmodSoundBank));
+        }
+        writer.WriteEndArray();
+
+        writer.WritePropertyName(nameof(value.EventNodes));
+        serializer.Serialize(writer, value.EventNodes);
+
+        writer.WritePropertyName(nameof(value.BusNodes));
+        serializer.Serialize(writer, value.BusNodes);
+
+        writer.WritePropertyName(nameof(value.EffectNodes));
+        serializer.Serialize(writer, value.EffectNodes);
+
+        writer.WritePropertyName(nameof(value.TimelineNodes));
+        serializer.Serialize(writer, value.TimelineNodes);
+
+        writer.WritePropertyName(nameof(value.TransitionNodes));
+        serializer.Serialize(writer, value.TransitionNodes);
+
+        writer.WritePropertyName(nameof(value.InstrumentNodes));
+        serializer.Serialize(writer, value.InstrumentNodes);
+
+        writer.WritePropertyName(nameof(value.WavEntries));
+        serializer.Serialize(writer, value.WavEntries);
+
+        writer.WritePropertyName(nameof(value.ParameterNodes));
+        serializer.Serialize(writer, value.ParameterNodes);
+
+        writer.WritePropertyName(nameof(value.ModulatorNodes));
+        serializer.Serialize(writer, value.ModulatorNodes);
+
+        writer.WritePropertyName(nameof(value.CurveNodes));
+        serializer.Serialize(writer, value.CurveNodes);
+
+        writer.WritePropertyName(nameof(value.PropertyNodes));
+        serializer.Serialize(writer, value.PropertyNodes);
+
+        writer.WritePropertyName(nameof(value.MappingNodes));
+        serializer.Serialize(writer, value.MappingNodes);
+
+        writer.WritePropertyName(nameof(value.ParameterLayoutNodes));
+        serializer.Serialize(writer, value.ParameterLayoutNodes);
+
+        writer.WritePropertyName(nameof(value.ControllerNodes));
+        serializer.Serialize(writer, value.ControllerNodes);
+
+        writer.WritePropertyName(nameof(value.SnapshotNodes));
+        serializer.Serialize(writer, value.SnapshotNodes);
+
+        writer.WritePropertyName(nameof(value.VCANodes));
+        serializer.Serialize(writer, value.VCANodes);
+
+        writer.WritePropertyName(nameof(value.ControllerOwnerNodes));
+        serializer.Serialize(writer, value.ControllerOwnerNodes);
+
+        writer.WriteEndObject();
+    }
+
+    public override FModReader ReadJson(JsonReader reader, System.Type objectType, FModReader existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FModGuidConverter : JsonConverter<FModGuid>
+{
+    public override void WriteJson(JsonWriter writer, FModGuid value, JsonSerializer serializer)
+    {
+        writer.WriteValue(value.ToString());
+    }
+
+    public override FModGuid ReadJson(JsonReader reader, Type objectType, FModGuid existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class FmodSoundBankConverter : JsonConverter<FmodSoundBank>
+{
+    public override void WriteJson(JsonWriter writer, FmodSoundBank value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.Header));
+        serializer.Serialize(writer, value.Header);
+
+        writer.WritePropertyName(nameof(value.Samples));
+        writer.WriteStartArray();
+        foreach (var sample in value.Samples)
+        {
+            writer.WriteStartObject();
+
+            writer.WritePropertyName(nameof(sample.Metadata));
+            serializer.Serialize(writer, sample.Metadata);
+
+            writer.WritePropertyName(nameof(sample.Name));
+            writer.WriteValue(sample.Name);
+
+            writer.WriteEndObject();
+        }
+        writer.WriteEndArray();
+
+        writer.WriteEndObject();
+    }
+
+    public override FmodSoundBank ReadJson(JsonReader reader, Type objectType, FmodSoundBank existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class AcbReaderConverter : JsonConverter<AcbReader>
+{
+    public override void WriteJson(JsonWriter writer, AcbReader value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.AtomCueSheetData));
+        serializer.Serialize(writer, value.AtomCueSheetData);
+
+        writer.WriteEndObject();
+    }
+
+    public override AcbReader ReadJson(JsonReader reader, Type objectType, AcbReader existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
+    }
+}
+
+public class AwbReaderConverter : JsonConverter<AwbReader>
+{
+    public override void WriteJson(JsonWriter writer, AwbReader value, JsonSerializer serializer)
+    {
+        writer.WriteStartObject();
+
+        writer.WritePropertyName(nameof(value.Waves));
+        serializer.Serialize(writer, value.Waves);
+
+        writer.WritePropertyName(nameof(value.Subkey));
+        serializer.Serialize(writer, value.Subkey);
+
+        writer.WriteEndObject();
+    }
+
+    public override AwbReader ReadJson(JsonReader reader, Type objectType, AwbReader existingValue, bool hasExistingValue, JsonSerializer serializer)
+    {
+        throw new NotImplementedException();
     }
 }

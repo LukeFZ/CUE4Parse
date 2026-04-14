@@ -123,6 +123,19 @@ public struct FRichCurveKey : IUStruct
         LeaveTangent = leaveTangent;
         LeaveTangentWeight = 0.0f;
     }
+
+    public FRichCurveKey(FMutableArchive Ar)
+    {
+        Time = Ar.Read<float>();
+        Value = Ar.Read<float>();
+        ArriveTangent = Ar.Read<float>();
+        ArriveTangentWeight = Ar.Read<float>();
+        LeaveTangent = Ar.Read<float>();
+        LeaveTangentWeight = Ar.Read<float>();
+        InterpMode = Ar.Read<ERichCurveInterpMode>();
+        TangentMode = Ar.Read<ERichCurveTangentMode>();
+        TangentWeightMode = Ar.Read<ERichCurveTangentWeightMode>();
+    }
 }
 
 public class FCompressedRichCurve : IUStruct
@@ -175,6 +188,11 @@ public class FRichCurve : FRealCurve
     public FRichCurve()
     {
         Keys = [];
+    }
+
+    public FRichCurve(FMutableArchive Ar)
+    {
+        Keys = Ar.ReadArray<FRichCurveKey>();
     }
 
     public FRichCurve(FStructFallback data) : base(data)

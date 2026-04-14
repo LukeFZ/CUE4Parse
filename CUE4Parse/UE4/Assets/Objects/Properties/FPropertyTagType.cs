@@ -2,11 +2,15 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
+using CUE4Parse.GameTypes.Borderlands4.Assets.Objects.Properties;
 using CUE4Parse.GameTypes.FN.Assets.Exports;
+using CUE4Parse.GameTypes.OuterWorlds2.Properties;
+using CUE4Parse.GameTypes.OuterWorlds2.Readers;
 using CUE4Parse.UE4.Assets.Exports;
 using CUE4Parse.UE4.Assets.Readers;
 using CUE4Parse.UE4.Assets.Utils;
 using CUE4Parse.UE4.Objects.UObject;
+using CUE4Parse.UE4.Versions;
 using CUE4Parse.Utils;
 using Newtonsoft.Json;
 using Serilog;
@@ -19,7 +23,8 @@ public enum ReadType : byte
     NORMAL,
     MAP,
     ARRAY,
-    OPTIONAL
+    OPTIONAL,
+    RAW,
 }
 
 public abstract class FPropertyTagType<T> : FPropertyTagType
@@ -38,10 +43,13 @@ public abstract class FPropertyTagType
     public object? GetValue(Type type)
     {
         var generic = GenericValue;
+
+        type = Nullable.GetUnderlyingType(type) ?? type;
         if (type.IsInstanceOfType(generic))
         {
             return generic;
         }
+
         switch (this)
         {
             case FPropertyTagType<FScriptStruct> structProp when type.IsInstanceOfType(structProp.Value!.StructType):
@@ -65,6 +73,10 @@ public abstract class FPropertyTagType
             case FPropertyTagType<FSoftObjectPath> softObjProp when typeof(UObject).IsAssignableFrom(type):
                 if (softObjProp.Value.TryLoad(out var softExport) && type.IsInstanceOfType(softExport))
                     return softExport;
+                return null;
+            case FPropertyTagType<FSoftObjectPath> softObjProp when typeof(ResolvedObject).IsAssignableFrom(type):
+                if (softObjProp.Value!.TryLoad(out var loadedObject))
+                    return new ResolvedLoadedObject(loadedObject);
                 return null;
             case EnumProperty enumProp when type.IsEnum:
                 var storedEnum = enumProp.Value.Text;
@@ -137,7 +149,12 @@ public abstract class FPropertyTagType
             "MulticastInlineDelegateProperty" => new MulticastInlineDelegateProperty(Ar, type),
             "MulticastSparseDelegateProperty" => new MulticastSparseDelegateProperty(Ar, type),
             "NameProperty" => new NameProperty(Ar, type),
-            "ObjectProperty" => Ar is FLevelSaveRecordArchive ? new AssetObjectProperty(Ar, type) : new ObjectProperty(Ar, type), // ObjectProperty but serialized as string
+            "ObjectProperty" => Ar switch
+                {
+                    FLevelSaveRecordArchive => new AssetObjectProperty(Ar, type), // ObjectProperty but serialized as string
+                    FOW2ObjectsArchive OW2Ar => new FOW2ObjectProperty(OW2Ar, type),
+                    _ => new ObjectProperty(Ar, type),
+                },
             "SetProperty" => new SetProperty(Ar, tagData, type),
             "SoftClassProperty" => new SoftObjectProperty(Ar, type),
             "SoftObjectProperty" => new SoftObjectProperty(Ar, type),
@@ -151,8 +168,13 @@ public abstract class FPropertyTagType
             "WeakObjectProperty" => new WeakObjectProperty(Ar, type),
             "OptionalProperty" => new OptionalProperty(Ar, tagData, type),
             "VerseStringProperty" => new VerseStringProperty(Ar, type),
-            "VerseFunctionProperty" => null,
+            "VerseFunctionProperty" => new ObjectProperty(Ar, type),
             "VerseDynamicProperty" => new ObjectProperty(Ar, type), // idk, but for now read as ObjectProperty
+            "VerseClassProperty" => new VerseClassProperty(Ar, type),
+
+            "CustomProperty_FD" or "GbxDefPtrProperty" when Ar.Game == EGame.GAME_Borderlands4 => new GbxDefPtrProperty(Ar, type),
+            "CustomProperty_FE" or "GameDataHandleProperty" when Ar.Game == EGame.GAME_Borderlands4 => new GameDataHandleProperty(Ar, type),
+
             _ => null
         };
 #if DEBUG

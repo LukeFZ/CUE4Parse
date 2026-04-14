@@ -103,7 +103,7 @@ public class UEModel : UEFormatExport
         }
     }
 
-    private void SerializeStaticMeshData(FArchiveWriter archive, IReadOnlyCollection<CMeshVertex> verts, FRawStaticIndexBuffer indices, FColor[]? vertexColors, CVertexColor[]? extraVertexColors, CMeshSection[] sections, FMeshUVFloat[][] extraUVs)
+    private void SerializeStaticMeshData(FArchiveWriter archive, IReadOnlyCollection<CMeshVertex> verts, uint[] indices, FColor[]? vertexColors, CVertexColor[]? extraVertexColors, CMeshSection[] sections, FMeshUVFloat[][] extraUVs)
     {
         using var vertexChunk = new FDataChunk("VERTICES", verts.Count);
         using var normalsChunk = new FDataChunk("NORMALS", verts.Count);
@@ -246,10 +246,10 @@ public class UEModel : UEFormatExport
 
     private void SerializeSkeletonData(FArchiveWriter archive, USkeleton? skeleton, List<CSkelMeshBone> bones, FPackageIndex[] sockets, FVirtualBone[] virtualBones)
     {
-        using (var metaDataChunk = new FDataChunk("METADATA"))
+        using (var metaDataChunk = new FDataChunk("METADATA", 1))
         {
             metaDataChunk.WriteFString(skeleton?.GetPathName() ?? string.Empty);
-            metaDataChunk.Serialize(Ar);
+            metaDataChunk.Serialize(archive);
         }
         
         using (var boneChunk = new FDataChunk("BONES", bones.Count))
